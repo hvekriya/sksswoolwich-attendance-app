@@ -46,6 +46,10 @@
 </template>
 
 <script setup>
+
+definePageMeta({
+  layout: 'auth', // This tells Nuxt to use layouts/auth.vue for this page
+});
 import { ref } from 'vue';
 import { signInWithEmailAndPassword } from 'firebase/auth';
 import { doc, getDoc } from 'firebase/firestore';
