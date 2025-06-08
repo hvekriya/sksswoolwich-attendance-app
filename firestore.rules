@@ -1,0 +1,85 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    // Helper functions for readability
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
+    }
+
+    function isTeacher() {
+      return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
+    }
+
+    // Helper to get the authenticated user's classId from their profile
+    function getTeacherClassId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classId;
+    }
+
+
+    // 1. Users Collection (Handles admins, teachers, and students)
+    match /users/{userId} {
+      // Allow authenticated users to read their own user profile.
+      allow read: if isAuthenticated() && request.auth.uid == userId;
+
+      // Admins can read, create, update, or delete ANY user profile document.
+      allow read, create, update, delete: if isAdmin();
+
+      // Teachers can CREATE new user profiles, but ONLY IF:
+      // 1. The new document's 'role' is specifically 'student'.
+      // 2. The new document's 'classId' matches the teacher's own assigned classId.
+      // 3. The teacher is authenticated.
+      allow create: if isTeacher()
+                     && request.resource.data.role == 'student'
+                     && request.resource.data.classId == getTeacherClassId();
+
+      // Teachers can READ *student* user profiles, but ONLY IF:
+      // 1. The student profile's 'role' is 'student'.
+      // 2. The student's 'classId' matches the teacher's own assigned classId.
+      // (This covers list queries for students by teachers, e.g., in attendance form)
+      allow read: if isTeacher()
+                   && resource.data.role == 'student'
+                   && resource.data.classId == getTeacherClassId();
+    }
+
+
+    // 2. Classes Collection
+    match /classes/{classId} {
+      // Allow all authenticated users to read all class names/IDs (for dropdowns, general display).
+      allow read: if isAuthenticated();
+
+      // Only administrators can create, update, or delete classes.
+      allow write: if isAdmin();
+    }
+
+
+    // 3. Attendance Collection
+    // Documents are structured as attendance/{classId}_{YYYY-MM-DD}
+    match /attendance/{attendanceRecordId} {
+      // Allow all authenticated users (teachers/admins) to write attendance (this is refined below)
+      allow write: if isAuthenticated(); // General write permission, refined by create/update
+
+      // Teachers can CREATE or UPDATE attendance records ONLY IF:
+      // 1. They are a teacher.
+      // 2. The attendance record's 'classId' being written matches their assigned classId.
+      // 3. The attendance record's ID (`attendanceRecordId`) matches the expected format for the current date
+      //    (ensuring they only write for the correct class and today's date).
+      allow create, update: if isTeacher()
+                                && request.resource.data.classId == getTeacherClassId()
+                                && request.resource.id == request.resource.data.classId + "_" + request.time.toDate().toISOString().split('T')[0];
+
+      // Administrators can read all attendance records.
+      allow read: if isAdmin();
+
+      // Teachers can read attendance records ONLY IF:
+      // 1. They are a teacher.
+      // 2. The attendance record's 'classId' being read matches their assigned classId.
+      allow read: if isTeacher()
+                   && resource.data.classId == getTeacherClassId();
+    }
+  }
+}

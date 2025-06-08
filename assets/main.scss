@@ -1,0 +1,18 @@
+// assets/main.scss
+
+// Optional: Override Bootstrap variables here before importing
+// For example, to change primary color:
+// $primary: #4CAF50; // A custom green for primary
+
+@import 'bootstrap/scss/bootstrap.scss';
+
+// Your custom application-wide styles below
+body {
+  padding-top: 56px; /* Adjust for fixed navbar height */
+  background-color: #f8f9fa; /* Light gray background */
+}
+
+/* Custom utility classes or component-specific styles */
+.card-custom-shadow {
+  box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.1);
+}

@@ -1,0 +1,47 @@
+{
+  // This file extends Nuxt's generated TypeScript configuration.
+  // It ensures your project benefits from Nuxt's type inferences and auto-imports.
+  "extends": "./.nuxt/tsconfig.json",
+  "compilerOptions": {
+    // Recommend for Nuxt 3 projects using Vite (default bundler)
+    "moduleResolution": "Bundler",
+    // Base options for modern JavaScript features
+    "target": "ESNext",
+    "lib": ["ESNext", "DOM", "DOM.Iterable"],
+    // Enable strict type-checking options
+    "strict": true,
+    // Enable importing CommonJS modules as ES modules
+    "esModuleInterop": true,
+    // Ensure consistent casing in file names
+    "forceConsistentCasingInFileNames": true,
+    // Skip type checking of all declaration files (*.d.ts)
+    "skipLibCheck": true,
+    // Allow default imports from modules with no default export
+    "allowSyntheticDefaultImports": true,
+    // Define path aliases used in your Nuxt project
+    "paths": {
+      "~/*": ["./*"],
+      "@/*": ["./*"]
+    }
+  },
+  // Specify which files to include in the compilation
+  "include": [
+    "**/*",            // All files in the project
+    "**/.nuxt/**/*",   // Nuxt's generated files for type information
+    "**/*.ts",         // All TypeScript files
+    "**/*.d.ts",       // All TypeScript declaration files
+    "**/*.vue"         // Vue Single File Components (for Volar/Vite integration)
+  ],
+  // Specify which files to exclude from the compilation
+  "exclude": [
+    "node_modules",    // Standard node modules
+    "dist",            // Build output directories
+    ".output",         // Nuxt's final build output
+    ".nuxt",           // Nuxt's development build directory
+    "public",          // Static assets directory
+    // Optionally exclude Firebase config files if they end up in your source
+    "firebase.json",
+    "firestore.rules",
+    "storage.rules"
+  ]
+}
