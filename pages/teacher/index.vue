@@ -1,7 +1,7 @@
 <template>
   <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="mb-0">My Class: <span class="text-primary">{{ className }}</span></h2>
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4">
+      <h2 class="mb-md-0 mb-3">My Class: <span class="text-primary">{{ className }}</span></h2>
       <button class="btn btn-success" @click="addStudent">
         <i class="bi bi-plus-circle me-2"></i>Add Student
       </button>
@@ -50,8 +50,8 @@
         </thead>
         <tbody>
           <tr v-for="student in students" :key="student.id">
-            <td>{{ student.name }}</td>
-            <td class="text-center">
+            <td data-label="Name">{{ student.name }}</td>
+            <td data-label="Present?" class="text-center">
               <div class="form-check form-switch d-inline-block">
                 <input
                   class="form-check-input"

@@ -1,7 +1,7 @@
 <template>
   <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="mb-0">Manage Students</h2>
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4">
+      <h2 class="mb-2 mb-md-0">Manage Students</h2>
       <button class="btn btn-primary" @click="openAddStudentModal">
         <i class="bi bi-person-plus-fill me-2"></i>Add New Student
       </button>
@@ -31,11 +31,11 @@
         </thead>
         <tbody>
           <tr v-for="student in students" :key="student.id">
-            <td>{{ student.name }}</td>
-            <td>{{ student.email || 'N/A' }}</td>
-            <td>{{ student.className || 'N/A' }}</td>
-            <td>{{ student.addedByEmail || 'N/A' }}</td>
-            <td>
+            <td data-label="Name">{{ student.name }}</td>
+            <td data-label="Email">{{ student.email || 'N/A' }}</td>
+            <td data-label="Class name">{{ student.className || 'N/A' }}</td>
+            <td data-label="Added by">{{ student.addedByEmail || 'N/A' }}</td>
+            <td data-label="Actions">
               <button class="btn btn-sm btn-info me-2" @click="openEditStudentModal(student)">
                 <i class="bi bi-pencil-fill"></i> Edit
               </button>

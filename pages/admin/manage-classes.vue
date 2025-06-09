@@ -1,7 +1,7 @@
 <template>
   <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="mb-0">Manage Classes</h2>
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4">
+      <h2 class="mb-2 mb-md-0">Manage Classes</h2>
       <button class="btn btn-primary" @click="openAddClassModal">
         <i class="bi bi-plus-circle-fill me-2"></i>Create New Class
       </button>
@@ -29,16 +29,16 @@
         </thead>
         <tbody>
           <tr v-for="cls in classes" :key="cls.id">
-            <td>{{ cls.name }}</td>
-            <td>
+            <td data-label="Name">{{ cls.name }}</td>
+            <td data-label="Teachers">
               <span v-if="cls.teacherNames && cls.teacherNames.length">
                 {{ cls.teacherNames.join(', ') }}
               </span>
               <span v-else class="text-muted">No teachers assigned</span>
             </td>
-            <td>{{ cls.createdByUserEmail || 'N/A' }}</td>
-            <td>{{ formatDate(cls.createdAt) }}</td>
-            <td>
+            <td data-label="Created by">{{ cls.createdByUserEmail || 'N/A' }}</td>
+            <td data-label="Created on">{{ formatDate(cls.createdAt) }}</td>
+            <td data-label="Actions">
               <button class="btn btn-sm btn-info me-2" @click="openEditClassModal(cls)">
                 <i class="bi bi-pencil-fill"></i> Edit
               </button>

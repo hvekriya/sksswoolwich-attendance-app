@@ -1,7 +1,7 @@
 <template>
   <div class="container mt-4">
-    <div class="d-flex justify-content-between align-items-center mb-4">
-      <h2 class="mb-0">Manage Teachers</h2>
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4"> 
+      <h2 class="mb-2 mb-md-0">Manage Teachers</h2>
       <button class="btn btn-primary" @click="openAddTeacherModal">
         <i class="bi bi-person-plus-fill me-2"></i>Add New Teacher
       </button>
@@ -30,10 +30,10 @@
         </thead>
         <tbody>
           <tr v-for="teacher in teachers" :key="teacher.id">
-            <td>{{ teacher.name }}</td>
-            <td>{{ teacher.email }}</td>
-            <td>{{ teacher.className || 'N/A' }}</td>
-            <td>
+            <td data-label="Name">{{ teacher.name }}</td>
+            <td data-label="Email">{{ teacher.email }}</td>
+            <td data-label="Class name">{{ teacher.className || 'N/A' }}</td>
+            <td data-label="Actions">
               <button class="btn btn-sm btn-info me-2" @click="openEditTeacherModal(teacher)">
                 <i class="bi bi-pencil-fill"></i> Edit
               </button>
