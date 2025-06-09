@@ -1,3 +1,7 @@
+# Nuxt.js build output
+.nuxt/
+.output/ # For Nuxt 3 output
+
 # Logs
 logs
 *.log
@@ -67,5 +71,3 @@ node_modules/
 
 # dataconnect generated files
 .dataconnect
-
-.nuxt/
