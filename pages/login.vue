@@ -19,8 +19,7 @@
                   autocomplete="username"
                 />
               </div>
-              <div class="mb-4">
-                <label for="password" class="form-label">Password</label>
+              <div class="mb-2"> <label for="password" class="form-label">Password</label>
                 <input
                   type="password"
                   class="form-control"
@@ -29,6 +28,8 @@
                   required
                   autocomplete="current-password"
                 />
+              </div>
+              <div class="text-end mb-4"> <a href="#" @click.prevent="openForgotPasswordModal" class="text-primary small">Forgot password?</a>
               </div>
               <button type="submit" class="btn btn-primary w-100 py-2" :disabled="loading">
                 <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
@@ -50,14 +51,43 @@
       </div>
     </div>
   </div>
+
+  <div class="modal fade" id="forgotPasswordModal" tabindex="-1" aria-labelledby="forgotPasswordModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+      <div class="modal-content">
+        <div class="modal-header bg-primary text-white">
+          <h5 class="modal-title" id="forgotPasswordModalLabel">Forgot Password</h5>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+        <div class="modal-body">
+          <p>Enter your email address below, and we'll send you a link to reset your password.</p>
+          <form @submit.prevent="sendResetEmail">
+            <div class="mb-3">
+              <label for="resetEmail" class="form-label">Email address</label>
+              <input type="email" class="form-control" id="resetEmail" v-model="resetEmail" required>
+            </div>
+            <button type="submit" class="btn btn-primary w-100" :disabled="resetLoading">
+              <span v-if="resetLoading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              <span v-else>Send Reset Link</span>
+            </button>
+            <div v-if="resetMessage" :class="['alert mt-3 text-center', resetMessageType === 'success' ? 'alert-success' : 'alert-danger']">
+              {{ resetMessage }}
+            </div>
+          </form>
+        </div>
+      </div>
+    </div>
+  </div>
 </template>
 
 <script setup>
-import { ref } from 'vue';
-import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup } from 'firebase/auth'; // Added Google Auth imports
-import { doc, getDoc } from 'firebase/firestore';
+definePageMeta({
+  layout: 'auth',
+});
+import { ref, onMounted } from 'vue'; // Added onMounted
+import { signInWithEmailAndPassword, GoogleAuthProvider, signInWithPopup, sendPasswordResetEmail } from 'firebase/auth'; // Added sendPasswordResetEmail
+import { doc, getDoc, setDoc } from 'firebase/firestore'; // Added setDoc for potential new Google user profile
 
-// Access Firebase services
 const nuxtApp = useNuxtApp();
 const auth = nuxtApp.$auth;
 const db = nuxtApp.$db;
@@ -66,9 +96,31 @@ const router = useRouter();
 const email = ref('');
 const password = ref('');
 const errorMessage = ref(null);
-const loading = ref(false); // Controls loading state for both email/password and Google login
+const loading = ref(false);
 
-// Function to handle email/password login
+// Forgot Password specific refs
+const resetEmail = ref('');
+const resetMessage = ref(null);
+const resetMessageType = ref('info'); // 'success' or 'danger'
+const resetLoading = ref(false);
+
+// Bootstrap Modal instance
+let forgotPasswordModal = null;
+
+onMounted(() => {
+  // Initialize Bootstrap Modal after component is mounted
+  // This requires Bootstrap's JS to be loaded globally or imported
+  if (process.client) { // Ensure this runs only on the client-side
+    // Check if Bootstrap is available
+    if (typeof window.bootstrap !== 'undefined') {
+      forgotPasswordModal = new window.bootstrap.Modal(document.getElementById('forgotPasswordModal'));
+    } else {
+      console.warn('Bootstrap JS not loaded. Forgot password modal may not function correctly.');
+    }
+  }
+});
+
+
 const handleLogin = async () => {
   errorMessage.value = null;
   loading.value = true;
@@ -80,7 +132,6 @@ const handleLogin = async () => {
     );
     const user = userCredential.user;
 
-    // Check user's role in Firestore and redirect
     await checkUserRoleAndRedirect(user);
 
   } catch (error) {
@@ -102,7 +153,6 @@ const handleLogin = async () => {
   }
 };
 
-// Function to handle Google Sign-in
 const signInWithGoogle = async () => {
   errorMessage.value = null;
   loading.value = true;
@@ -111,7 +161,6 @@ const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, provider);
     const user = result.user;
 
-    // Check user's role in Firestore and redirect
     await checkUserRoleAndRedirect(user);
 
   } catch (err) {
@@ -134,7 +183,6 @@ const signInWithGoogle = async () => {
   }
 };
 
-// Helper function to check user role and redirect
 const checkUserRoleAndRedirect = async (user) => {
   const userDocRef = doc(db, 'users', user.uid);
   const userDoc = await getDoc(userDocRef);
@@ -150,32 +198,69 @@ const checkUserRoleAndRedirect = async (user) => {
     }
     else {
       errorMessage.value = 'Your account has an unrecognized role. Please contact support.';
-      await auth.signOut(); // Sign out the user if role is unrecognized
+      await auth.signOut();
     }
   } else {
     // This scenario happens if a new Google user signs in and their profile
     // hasn't been provisioned in the 'users' Firestore collection yet.
-    // You have two main options here:
-    // 1. Automatically create a basic user profile with a default role (e.g., 'student').
-    //    (Often done via a Firebase Cloud Function onCreate trigger for robustness).
-    // 2. Inform the user to contact support for account setup.
-    // For consistency with your existing error handling, we'll go with option 2 for now.
+    // For consistency, we'll inform the user to contact support for account setup.
     errorMessage.value = 'Your profile was not found. Please contact support to set up your account.';
-    await auth.signOut(); // Sign out the user until their profile is set up
+    await auth.signOut();
   }
 };
 
-// Define page meta for layout
-definePageMeta({
-  layout: 'auth', // This tells Nuxt to use layouts/auth.vue for this page
-});
+// --- Forgot Password Functions ---
+const openForgotPasswordModal = () => {
+  resetEmail.value = email.value; // Pre-fill with the email from the login form
+  resetMessage.value = null; // Clear previous messages
+  resetMessageType.value = 'info';
+  if (forgotPasswordModal) {
+    forgotPasswordModal.show();
+  }
+};
+
+const sendResetEmail = async () => {
+  resetLoading.value = true;
+  resetMessage.value = null;
+  resetMessageType.value = 'info';
+  try {
+    await sendPasswordResetEmail(auth, resetEmail.value);
+    resetMessage.value = `A password reset link has been sent to ${resetEmail.value}. Please check your inbox.`;
+    resetMessageType.value = 'success';
+    // Optionally, hide the modal after a short delay
+    setTimeout(() => {
+      if (forgotPasswordModal) forgotPasswordModal.hide();
+    }, 3000);
+  } catch (error) {
+    console.error('Error sending password reset email:', error);
+    let msg = 'Failed to send password reset email. ';
+    switch (error.code) {
+      case 'auth/invalid-email':
+        msg += 'Please enter a valid email address.';
+        break;
+      case 'auth/user-not-found':
+        msg += 'No user found with that email address.';
+        break;
+      case 'auth/missing-email':
+        msg += 'Please enter your email address.';
+        break;
+      default:
+        msg += error.message;
+    }
+    resetMessage.value = msg;
+    resetMessageType.value = 'danger';
+  } finally {
+    resetLoading.value = false;
+  }
+};
 </script>
 
 <style scoped>
+/* Add any specific styles for the login form if needed */
 .card-header {
   border-bottom: none;
 }
-/* Optional: Style for the 'OR' separator */
+/* Style for the 'OR' separator */
 .text-center.my-3 {
   font-size: 0.9rem;
   color: #6c757d;
@@ -187,9 +272,9 @@ definePageMeta({
   content: '';
   position: absolute;
   top: 50%;
-  width: 45%; /* Adjust width as needed */
+  width: 45%;
   height: 1px;
-  background: #e9ecef; /* Light gray line */
+  background: #e9ecef;
 }
 .text-center.my-3::before {
   left: 0;
