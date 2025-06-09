@@ -7,11 +7,13 @@
     </main>
     <!-- Optional: Add a global notification component here if you implement one later -->
     <!-- <GlobalNotifications /> -->
+    <AppFooter />
   </div>
 </template>
 
 <script setup>
 import Navbar from '~/components/common/Navbar.vue';
+import AppFooter from '~/components/common/AppFooter.vue';
 
 // Define global middleware to run on every page unless specifically overridden
 // The 'auth' middleware will ensure users are redirected to login if not authenticated.

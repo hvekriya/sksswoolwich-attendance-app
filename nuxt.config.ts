@@ -69,6 +69,20 @@ export default defineNuxtConfig({
   vite: {
     optimizeDeps: {
       include: ['firebase/app', 'firebase/auth', 'firebase/firestore'] // Optimize these for faster development
+    },
+    css: {
+      preprocessorOptions: {
+        scss: {
+          // This line is often needed if you use Sass maps or functions,
+          // but might not be strictly necessary just for variable overrides.
+          // If you encounter errors like "Undefined variable: "$primary"",
+          // it means Bootstrap's variables weren't correctly loaded before its components.
+          // The @import order in main.scss is key.
+          additionalData: `
+            @import "~/assets/scss/custom_variables.scss";
+          `,
+        },
+      },
     }
   }
 });

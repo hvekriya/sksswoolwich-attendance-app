@@ -1,10 +1,5 @@
-// assets/main.scss
-
-// Optional: Override Bootstrap variables here before importing
-// For example, to change primary color:
-// $primary: #4CAF50; // A custom green for primary
-
 @import 'bootstrap/scss/bootstrap.scss';
+@import './scss/custom_variables'; // No underscore needed here, just the file name
 
 // Your custom application-wide styles below
 body {
