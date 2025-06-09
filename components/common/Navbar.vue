@@ -40,6 +40,12 @@
             <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="userDropdown">
               <li><span class="dropdown-item-text text-muted small">Role: {{ userRole || 'Unknown' }}</span></li>
               <li><hr class="dropdown-divider"></li>
+              <li>
+                <NuxtLink class="dropdown-item" to="/profile">
+                  <i class="bi bi-person-gear me-2"></i>Edit Profile
+                </NuxtLink>
+              </li>
+              <li><hr class="dropdown-divider"></li>
               <li><button class="dropdown-item" @click="handleLogout"><i class="bi bi-box-arrow-right me-2"></i>Logout</button></li>
             </ul>
           </li>
@@ -52,7 +58,7 @@
 <script setup>
 import { ref, onMounted, computed } from 'vue';
 import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore'; // <--- ADD THIS LINE
+import { doc, getDoc } from 'firebase/firestore';
 
 const nuxtApp = useNuxtApp();
 const auth = nuxtApp.$auth;

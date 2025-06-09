@@ -21,8 +21,7 @@ service cloud.firestore {
     }
 
 
-    // 1. Users Collection (This collection now likely holds only admin and teacher profiles,
-    //    if student *profiles* are now entirely in the 'students' collection)
+    // 1. Users Collection
     match /users/{userId} {
       // Allow authenticated users to read their own user profile.
       allow read: if isAuthenticated() && request.auth.uid == userId;
@@ -30,17 +29,23 @@ service cloud.firestore {
       // Admins can read, create, update, or delete ANY user profile document (admins/teachers).
       allow read, create, update, delete: if isAdmin();
 
-      // IMPORTANT: If student profiles are *only* in the 'students' collection now,
-      // you might remove or adjust teacher read/create rules for 'users' if they were
-      // previously used for student documents within 'users'.
-      // For now, keeping your existing teacher create/read rules for users, assuming
-      // student *auth-linked* documents might still reside here, or roles are pulled from here.
-      allow create: if isTeacher()
-                     && request.resource.data.role == 'student' // If 'student' roles are still created in 'users'
-                     && request.resource.data.classId == getTeacherClassId();
+      // NEW: Allow authenticated users to update their OWN profile
+      // Prevents changing their role (important for security)
+      allow update: if isAuthenticated()
+                      && request.auth.uid == userId
+                      && request.resource.data.role == resource.data.role; // Ensures user cannot change their own role
 
+      // Teachers can CREATE new user profiles (specifically students, if created here and not in separate /students collection)
+      // but ONLY IF: role is 'student', and classId matches teacher's own.
+      allow create: if isTeacher()
+                     && request.resource.data.role == 'student'
+                     && request.resource.data.classId == getTeacherClassId()
+                     && request.resource.data.name is string && request.resource.data.name.size() > 0;
+
+      // Teachers can READ *student* user profiles (if they exist here), but ONLY IF:
+      // student's role is 'student' and classId matches teacher's own.
       allow read: if isTeacher()
-                   && resource.data.role == 'student' // If 'student' roles are still read from 'users'
+                   && resource.data.role == 'student'
                    && resource.data.classId == getTeacherClassId();
     }
 
