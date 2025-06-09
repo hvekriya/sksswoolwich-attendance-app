@@ -12,7 +12,8 @@ type HydrationStrategies = {
 }
 type LazyComponent<T> = (T & DefineComponent<HydrationStrategies, {}, {}, {}, {}, {}, {}, { hydrated: () => void }>)
 interface _GlobalComponents {
-      'AdminAddEditStudentModal': typeof import("../components/admin/AddEditStudentModal.vue")['default']
+      'AdminAddEditClassModal': typeof import("../components/admin/AddEditClassModal.vue")['default']
+    'AdminAddEditStudentModal': typeof import("../components/admin/AddEditStudentModal.vue")['default']
     'AdminAddEditTeacherModal': typeof import("../components/admin/AddEditTeacherModal.vue")['default']
     'AdminAttendanceReportTable': typeof import("../components/admin/AttendanceReportTable.vue")['default']
     'CommonNavbar': typeof import("../components/common/Navbar.vue")['default']
@@ -41,7 +42,8 @@ interface _GlobalComponents {
     'Body': typeof import("../node_modules/nuxt/dist/head/runtime/components")['Body']
     'NuxtIsland': typeof import("../node_modules/nuxt/dist/app/components/nuxt-island")['default']
     'NuxtRouteAnnouncer': IslandComponent<typeof import("../node_modules/nuxt/dist/app/components/server-placeholder")['default']>
-      'LazyAdminAddEditStudentModal': LazyComponent<typeof import("../components/admin/AddEditStudentModal.vue")['default']>
+      'LazyAdminAddEditClassModal': LazyComponent<typeof import("../components/admin/AddEditClassModal.vue")['default']>
+    'LazyAdminAddEditStudentModal': LazyComponent<typeof import("../components/admin/AddEditStudentModal.vue")['default']>
     'LazyAdminAddEditTeacherModal': LazyComponent<typeof import("../components/admin/AddEditTeacherModal.vue")['default']>
     'LazyAdminAttendanceReportTable': LazyComponent<typeof import("../components/admin/AttendanceReportTable.vue")['default']>
     'LazyCommonNavbar': LazyComponent<typeof import("../components/common/Navbar.vue")['default']>
@@ -76,6 +78,7 @@ declare module 'vue' {
   export interface GlobalComponents extends _GlobalComponents { }
 }
 
+export const AdminAddEditClassModal: typeof import("../components/admin/AddEditClassModal.vue")['default']
 export const AdminAddEditStudentModal: typeof import("../components/admin/AddEditStudentModal.vue")['default']
 export const AdminAddEditTeacherModal: typeof import("../components/admin/AddEditTeacherModal.vue")['default']
 export const AdminAttendanceReportTable: typeof import("../components/admin/AttendanceReportTable.vue")['default']
@@ -105,6 +108,7 @@ export const Html: typeof import("../node_modules/nuxt/dist/head/runtime/compone
 export const Body: typeof import("../node_modules/nuxt/dist/head/runtime/components")['Body']
 export const NuxtIsland: typeof import("../node_modules/nuxt/dist/app/components/nuxt-island")['default']
 export const NuxtRouteAnnouncer: IslandComponent<typeof import("../node_modules/nuxt/dist/app/components/server-placeholder")['default']>
+export const LazyAdminAddEditClassModal: LazyComponent<typeof import("../components/admin/AddEditClassModal.vue")['default']>
 export const LazyAdminAddEditStudentModal: LazyComponent<typeof import("../components/admin/AddEditStudentModal.vue")['default']>
 export const LazyAdminAddEditTeacherModal: LazyComponent<typeof import("../components/admin/AddEditTeacherModal.vue")['default']>
 export const LazyAdminAttendanceReportTable: LazyComponent<typeof import("../components/admin/AttendanceReportTable.vue")['default']>

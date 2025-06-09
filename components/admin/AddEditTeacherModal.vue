@@ -73,7 +73,7 @@ const nuxtApp = useNuxtApp();
 const auth = nuxtApp.$auth;
 const db = nuxtApp.$db;
 // Initialize Cloud Functions client
-const functions = getFunctions(nuxtApp.$firebaseApp); // Assuming you pass $firebaseApp from your plugin
+const { $functions } = useNuxtApp();
 
 const form = ref({
   name: '',
@@ -126,7 +126,7 @@ const saveTeacher = async () => {
       // nuxtApp.provide('firebaseApp', app); // The Firebase app instance itself
       // This is crucial for getFunctions(app) to work.
 
-      const addTeacherCallable = httpsCallable(functions, 'addTeacher');
+      const addTeacherCallable = httpsCallable($functions, 'addTeacher');
       const result = await addTeacherCallable({
         email: form.value.email,
         password: form.value.password,

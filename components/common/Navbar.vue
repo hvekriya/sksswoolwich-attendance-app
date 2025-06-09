@@ -27,18 +27,6 @@
           <li class="nav-item" v-if="userRole === 'teacher'">
             <NuxtLink class="nav-link" to="/teacher/add-student">Add Student</NuxtLink>
           </li>
-
-          <li class="nav-item dropdown" v-if="userRole === 'admin'">
-            <a class="nav-link dropdown-toggle" href="#" id="adminDropdown" role="button" data-bs-toggle="dropdown" aria-expanded="false">
-              Admin
-            </a>
-            <ul class="dropdown-menu" aria-labelledby="adminDropdown">
-              <li><NuxtLink class="dropdown-item" to="/admin">Dashboard</NuxtLink></li>
-              <li><NuxtLink class="dropdown-item" to="/admin/manage-teachers">Manage Teachers</NuxtLink></li>
-              <li><NuxtLink class="dropdown-item" to="/admin/manage-students">Manage Students</NuxtLink></li>
-              <li><NuxtLink class="dropdown-item" to="/admin/reports">Reports</NuxtLink></li>
-            </ul>
-          </li>
         </ul>
 
         <ul class="navbar-nav">

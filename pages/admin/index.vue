@@ -2,7 +2,7 @@
   <div class="container mt-4">
     <h2 class="mb-4">Admin Dashboard</h2>
 
-    <div class="row g-4">
+    <div class="row g-4 mb-4">
       <div class="col-md-6 col-lg-4">
         <div class="card h-100 shadow-sm card-custom-shadow">
           <div class="card-body text-center d-flex flex-column justify-content-center">
@@ -23,6 +23,18 @@
           </div>
         </div>
       </div>
+      <div class="col-md-6 col-lg-4">
+        <div class="card h-100 shadow-sm card-custom-shadow">
+          <div class="card-body text-center d-flex flex-column justify-content-center">
+            <i class="bi bi-collection-fill fs-1 text-primary mb-3"></i>
+            <h5 class="card-title">Manage Classes</h5>
+            <p class="card-text">Create, view, edit, and delete classes.</p>
+            <NuxtLink to="/admin/manage-classes" class="btn btn-primary mt-auto">Go to Classes</NuxtLink>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="row g-4">
       <div class="col-md-6 col-lg-4">
         <div class="card h-100 shadow-sm card-custom-shadow">
           <div class="card-body text-center d-flex flex-column justify-content-center">

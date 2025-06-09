@@ -14,7 +14,7 @@ import { createFetch, Headers as Headers$1 } from 'file:///Users/hvekriya/Docume
 import { fetchNodeRequestHandler, callNodeRequestHandler } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/node-mock-http/dist/index.mjs';
 import { createStorage, prefixStorage } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/unstorage/dist/index.mjs';
 import unstorage_47drivers_47fs from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/unstorage/drivers/fs.mjs';
-import { digest } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/ohash/dist/index.mjs';
+import { digest } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/nitropack/node_modules/ohash/dist/index.mjs';
 import { klona } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/klona/dist/index.mjs';
 import defu, { defuFn } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/defu/dist/defu.mjs';
 import { snakeCase } from 'file:///Users/hvekriya/Documents/git/attendance-app/node_modules/scule/dist/index.mjs';
@@ -645,12 +645,12 @@ const _inlineRuntimeConfig = {
     }
   },
   "public": {
-    "firebaseApiKey": "AIzaSyBEA6apzPhq2uPLwI7RYCCEgdAPBJmYYuY",
-    "firebaseAuthDomain": "attendanceapp-ec623.firebaseapp.com",
-    "firebaseProjectId": "attendanceapp-ec623",
-    "firebaseStorageBucket": "attendanceapp-ec623.firebasestorage.app",
-    "firebaseMessagingSenderId": "141626747678",
-    "firebaseAppId": "1:141626747678:web:da4dba5cded8399c11f70f"
+    "firebaseApiKey": "AIzaSyC-vPj1LErcT2eg01jAy_08ldxL9xN9QbM",
+    "firebaseAuthDomain": "sksswoolwich-attendance-app.firebaseapp.com",
+    "firebaseProjectId": "sksswoolwich-attendance-app",
+    "firebaseStorageBucket": "sksswoolwich-attendance-app.firebasestorage.app",
+    "firebaseMessagingSenderId": "883215189636",
+    "firebaseAppId": "1:883215189636:web:54bcf3e0cca6368838e4d1"
   }
 };
 const envOptions = {

@@ -138,3 +138,113 @@ exports.addTeacher = https.onCall(async (request) => {
     );
   }
 });
+
+/**
+ * Cloud Function to create a new class with name and teacherIds.
+ * Callable by authenticated admin users.
+ * Adds a new document to the 'classes' collection.
+ */
+exports.createClass = https.onCall(async (request) => {
+  // 1. Authentication Check
+  if (!request.auth) {
+    throw new https.HttpsError(
+      "unauthenticated",
+      "The function must be called while authenticated."
+    );
+  }
+
+  const callerUid = request.auth.uid;
+
+  // 2. Authorization Check: Only admins can create classes
+  let callerUserDoc;
+  try {
+    callerUserDoc = await db.collection("users").doc(callerUid).get();
+  } catch (error: any) {
+    console.error(
+      `Error fetching caller's user document (${callerUid}):`,
+      error
+    );
+    throw new https.HttpsError(
+      "internal",
+      "Could not verify caller identity."
+    );
+  }
+
+  if (!callerUserDoc.exists || callerUserDoc.data()?.role !== "admin") {
+    throw new https.HttpsError(
+      "permission-denied",
+      "Only administrators can create classes."
+    );
+  }
+
+  // 3. Input Data Validation
+  interface CreateClassData {
+    name: string;
+    teacherIds: string[]; // Expect an array of strings
+  }
+
+  const { name, teacherIds } = request.data as CreateClassData;
+
+  // Validate 'name'
+  if (!name || typeof name !== "string" || name.trim() === "") {
+    throw new https.HttpsError(
+      "invalid-argument",
+      "Class name is required and must be a non-empty string."
+    );
+  }
+
+  // Validate 'teacherIds'
+  if (!Array.isArray(teacherIds) || teacherIds.length === 0) {
+    throw new https.HttpsError(
+      "invalid-argument",
+      "At least one teacher ID is required for the class."
+    );
+  }
+  // Ensure all elements in the array are non-empty strings
+  if (!teacherIds.every(id => typeof id === "string" && id.trim() !== "")) {
+    throw new https.HttpsError(
+      "invalid-argument",
+      "All teacher IDs must be non-empty strings."
+    );
+  }
+
+  // Optional: You could add a check here to verify if these teacherIds actually belong to existing teachers in your 'users' collection.
+  // This would involve additional Firestore reads within the function.
+  // For example:
+  // const teachersExist = await Promise.all(teacherIds.map(async (id) => {
+  //   const teacherDoc = await db.collection('users').doc(id).get();
+  //   return teacherDoc.exists && teacherDoc.data()?.role === 'teacher';
+  // }));
+  // if (!teachersExist.every(Boolean)) {
+  //   throw new https.HttpsError('invalid-argument', 'One or more provided teacher IDs are invalid or do not belong to a teacher.');
+  // }
+
+
+  try {
+    // 4. Create new class document in Firestore
+    const newClassRef = await db.collection("classes").add({
+      name: name.trim(),
+      teacherIds: teacherIds.map(id => id.trim()), // Trim IDs as well
+      createdAt: FieldValue.serverTimestamp(),
+      createdBy: callerUid, // Store who created the class
+    });
+
+    console.log(
+      `New class '${name}' created with teachers ${teacherIds.join(', ')} by admin ${callerUid}. ID: ${newClassRef.id}`
+    );
+
+    // 5. Return success response
+    return {
+      success: true,
+      message: `Class '${name}' created successfully!`,
+      classId: newClassRef.id,
+    };
+  } catch (error: any) {
+    console.error("Error creating class:", error);
+    throw new https.HttpsError(
+      "internal",
+      "Failed to create class due to an internal server error.",
+      error.message
+    );
+  }
+});

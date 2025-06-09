@@ -119,10 +119,9 @@ const addStudent = async () => {
 
   try {
     // *** CRITICAL CHANGE: Add to 'users' collection with role 'student' ***
-    await addDoc(collection(db, 'users'), { // Changed from 'students' to 'users'
+    await addDoc(collection(db, 'students'), { // Changed from 'students' to 'users'
       name: studentName.value,
       email: studentEmail.value || null,
-      role: 'student', // Explicitly set role
       classId: teacherClassId.value,
       addedBy: auth.currentUser.uid,
       addedAt: Timestamp.now(),
