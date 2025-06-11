@@ -2,7 +2,8 @@
   <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top shadow-sm">
     <div class="container">
       <NuxtLink class="navbar-brand" to="/">
-        <i class="bi bi-calendar-check me-2"></i>Satsang class attendance
+            <img src="/calendar-app-icon-white.png" alt="Calendar App Icon" style="width: 20px;">
+        Satsang class attendance
       </NuxtLink>
       <button
         class="navbar-toggler"

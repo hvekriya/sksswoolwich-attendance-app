@@ -21,10 +21,3 @@ definePageMeta({
   middleware: ['auth']
 });
 </script>
-
-<style>
-/* Any global layout-specific styles */
-main {
-  margin-top: 56px; /* Offset for fixed Bootstrap navbar height */
-}
-</style>
