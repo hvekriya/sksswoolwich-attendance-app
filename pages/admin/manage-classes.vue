@@ -39,12 +39,16 @@
             <td data-label="Created by">{{ cls.createdByUserEmail || 'N/A' }}</td>
             <td data-label="Created on">{{ formatDate(cls.createdAt) }}</td>
             <td data-label="Actions">
-              <button class="btn btn-sm btn-info me-2" @click="openEditClassModal(cls)">
-                <i class="bi bi-pencil-fill"></i> Edit
-              </button>
-              <button class="btn btn-sm btn-danger" @click="deleteClassConfirmation(cls)">
-                <i class="bi bi-trash-fill"></i> Delete
-              </button>
+              <div class="d-flex flex-wrap gap-2"> <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
+                  <i class="bi bi-calendar-check-fill me-1"></i> Attendance
+                </NuxtLink>
+                <button class="btn btn-sm btn-info" @click="openEditClassModal(cls)" title="Edit Class">
+                  <i class="bi bi-pencil-fill me-1"></i> Edit
+                </button>
+                <button class="btn btn-sm btn-danger" @click="deleteClassConfirmation(cls)" title="Delete Class">
+                  <i class="bi bi-trash-fill me-1"></i> Delete
+                </button>
+              </div>
             </td>
           </tr>
         </tbody>
@@ -169,8 +173,6 @@ const fetchClassesAndUsers = async () => {
       createdByUserEmail: allUsersMap[cls.createdBy] || 'Unknown User', // Resolve createdBy UID to name/email
     }));
 
-    console.log(classes)
-
   } catch (error) {
     console.error('Error fetching classes, teachers, or users:', error);
     showPageMessage(`Error loading data: ${error.message}`, 'danger');
@@ -249,5 +251,8 @@ onMounted(fetchClassesAndUsers);
 }
 .modal-backdrop.show {
   opacity: 0.5;
+}
+.d-flex.flex-wrap.gap-2 { /* Added for the action buttons layout */
+  gap: 0.5rem; /* Standard Bootstrap gap for spacing */
 }
 </style>

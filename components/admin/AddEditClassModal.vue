@@ -1,5 +1,5 @@
 <template>
-  <div class="modal fade" :class="{ 'show d-block': show }" tabindex="-1" role="dialog" aria-hidden="true">
+  <div class="modal fade" :class="{ 'show d-block': show }" tabindex="-1" role="dialog" aria-hidden="true" id="classModal">
     <div class="modal-dialog modal-dialog-centered" role="document">
       <div class="modal-content">
         <div class="modal-header bg-primary text-white">
@@ -13,13 +13,22 @@
               <input type="text" class="form-control" id="className" v-model="form.name" required />
             </div>
             <div class="mb-3">
-              <label for="assignedTeachers" class="form-label">Assign Teachers</label>
-              <select multiple class="form-select" id="assignedTeachers" v-model="form.teacherIds">
-                <option v-for="teacher in teachers" :key="teacher.id" :value="teacher.id">
-                  {{ teacher.name }} ({{ teacher.email }})
-                </option>
-              </select>
-              <small class="form-text text-muted">Hold Ctrl/Cmd to select multiple teachers.</small>
+              <label class="form-label">Assign Teachers</label>
+              <div class="teacher-checkbox-group">
+                <div class="form-check" v-for="teacher in teachers" :key="teacher.id">
+                  <input
+                    class="form-check-input"
+                    type="checkbox"
+                    :id="'teacher_' + teacher.id"
+                    :value="teacher.id"
+                    v-model="form.teacherIds"
+                  />
+                  <label class="form-check-label" :for="'teacher_' + teacher.id">
+                    {{ teacher.name }} ({{ teacher.email }})
+                  </label>
+                </div>
+                <p v-if="teachers.length === 0" class="text-muted small mt-2">No teachers available. Please add teachers first.</p>
+              </div>
             </div>
             <div v-if="errorMessage" class="alert alert-danger mt-3">{{ errorMessage }}</div>
             <div class="d-flex justify-content-end">
@@ -38,7 +47,7 @@
 
 <script setup>
 import { ref, watch, computed } from 'vue';
-import { doc, setDoc, addDoc, Timestamp } from 'firebase/firestore'; // Changed from setDoc to addDoc/setDoc
+import { doc, setDoc, addDoc, collection, Timestamp } from 'firebase/firestore';
 import { useNuxtApp } from '#app';
 
 const props = defineProps({
@@ -46,7 +55,7 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
-  classItem: { // Renamed from 'teacher' to 'classItem' for clarity
+  classItem: {
     type: Object,
     default: null,
   },
@@ -60,24 +69,23 @@ const emit = defineEmits(['close', 'saved']);
 
 const nuxtApp = useNuxtApp();
 const db = nuxtApp.$db;
-const auth = nuxtApp.$auth; // Needed for current user's UID (createdBy)
+const auth = nuxtApp.$auth;
 
 const form = ref({
   name: '',
-  teacherIds: [], // This will be an array of teacher UIDs
+  teacherIds: [],
 });
 const loading = ref(false);
 const errorMessage = ref(null);
 
 const isEditMode = computed(() => !!props.classItem);
 
-// Watch for changes in props.classItem to populate the form
 watch(() => props.classItem, (newClassItem) => {
   if (newClassItem) {
     form.value.name = newClassItem.name || '';
-    form.value.teacherIds = newClassItem.teacherIds || [];
+    // Ensure teacherIds is an array, even if it comes in as null or undefined
+    form.value.teacherIds = newClassItem.teacherIds ? [...newClassItem.teacherIds] : [];
   } else {
-    // Reset for create mode
     form.value = {
       name: '',
       teacherIds: [],
@@ -97,22 +105,20 @@ const saveClass = async () => {
 
   try {
     if (isEditMode.value) {
-      // Edit existing class
       const classDocRef = doc(db, 'classes', props.classItem.id);
       await setDoc(classDocRef, {
         name: form.value.name,
-        teacherIds: form.value.teacherIds || [], // Ensure it's an array, even if empty
-        updatedAt: Timestamp.now(), // Add an update timestamp
-      }, { merge: true }); // Use merge to only update specified fields
+        teacherIds: form.value.teacherIds || [],
+        updatedAt: Timestamp.now(),
+      }, { merge: true });
 
       emit('saved', { isNew: false });
     } else {
-      // Create new class
       await addDoc(collection(db, 'classes'), {
         name: form.value.name,
-        teacherIds: form.value.teacherIds || [], // Ensure it's an array
+        teacherIds: form.value.teacherIds || [],
         createdAt: Timestamp.now(),
-        createdBy: auth.currentUser.uid, // Record who created the class
+        createdBy: auth.currentUser.uid,
       });
       emit('saved', { isNew: true });
     }
@@ -124,17 +130,14 @@ const saveClass = async () => {
   }
 };
 
-// Bootstrap modal functionality - necessary for the 'fade' and 'show/hide'
 watch(() => props.show, (newVal) => {
   if (process.client) {
-    // Select based on a more specific class or ID if you have multiple modals
-    // For now, assuming this is the only modal for simpler setup.
-    const modalElement = document.querySelector('.modal');
+    const modalElement = document.getElementById('classModal');
     if (modalElement) {
       if (newVal) {
         modalElement.classList.add('show', 'd-block');
         modalElement.setAttribute('aria-modal', 'true');
-        modalElement.style.backgroundColor = 'rgba(0,0,0,0.5)'; // Add backdrop
+        modalElement.style.backgroundColor = 'rgba(0,0,0,0.5)';
         document.body.classList.add('modal-open');
       } else {
         modalElement.classList.remove('show', 'd-block');
@@ -148,8 +151,19 @@ watch(() => props.show, (newVal) => {
 </script>
 
 <style scoped>
-/* Specific styles for the modal if needed */
 .modal {
-  background-color: rgba(0, 0, 0, 0.5); /* Semi-transparent backdrop */
+  background-color: rgba(0, 0, 0, 0.5);
+}
+
+.teacher-checkbox-group {
+  max-height: 200px; /* Optional: Add a max-height and scroll if many teachers */
+  overflow-y: auto; /* Enable scrolling if max-height is hit */
+  border: 1px solid #dee2e6; /* Optional: Add a border */
+  padding: 10px;
+  border-radius: 0.25rem;
+}
+
+.form-check {
+  margin-bottom: 0.5rem; /* Spacing between checkboxes */
 }
 </style>
