@@ -24,7 +24,7 @@
                     v-model="form.teacherIds"
                   />
                   <label class="form-check-label" :for="'teacher_' + teacher.id">
-                    {{ teacher.name }} ({{ teacher.email }})
+                    {{ teacher.name }} ({{ teacher.email ? teacher.email : 'Admin' }})
                   </label>
                 </div>
                 <p v-if="teachers.length === 0" class="text-muted small mt-2">No teachers available. Please add teachers first.</p>

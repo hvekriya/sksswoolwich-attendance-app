@@ -149,7 +149,7 @@ const fetchClassesAndUsers = async () => {
     users.value = usersSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // Separate teachers for the modal's dropdown
-    teachers.value = users.value.filter(u => u.role === 'teacher');
+    teachers.value = users.value.filter(u => u.role === 'teacher' || u.role === 'admin');
 
     // Fetch all classes
     const classesCollection = collection(db, 'classes');
