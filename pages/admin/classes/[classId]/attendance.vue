@@ -5,7 +5,7 @@
       <div class="d-flex gap-2 flex-wrap"> <button class="btn btn-secondary" @click="goBackToClasses">
           <i class="bi bi-arrow-left-circle me-2"></i>Back to All Classes
         </button>
-        <NuxtLink :to="`/admin/manage-students`" class="btn btn-success">Mange students</NuxtLink>
+        <NuxtLink :to="`/admin/manage-students`" class="btn btn-success">Manage students</NuxtLink>
       </div>
     </div>
 

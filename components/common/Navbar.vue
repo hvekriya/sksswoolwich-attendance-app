@@ -3,7 +3,7 @@
     <div class="container">
       <NuxtLink class="navbar-brand" to="/">
             <img src="/calendar-app-icon-white.png" alt="Calendar App Icon" style="width: 20px;">
-        Satsang class attendance
+        Satsang Class attendance
       </NuxtLink>
       <button
         class="navbar-toggler"

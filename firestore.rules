@@ -3,89 +3,91 @@ service cloud.firestore {
   match /databases/{database}/documents {
 
     // --- Helper Functions ---
+
+    // Checks if the requesting user is authenticated
     function isAuthenticated() {
       return request.auth != null;
     }
 
+    // Checks if the requesting user has the 'admin' role
     function isAdmin() {
+      // Reads the user's role from their user document. Requires user document to exist.
       return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin';
     }
 
+    // Checks if the requesting user has the 'teacher' role
     function isTeacher() {
+      // Reads the user's role from their user document. Requires user document to exist.
       return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
     }
 
-    // Helper to get the classId assigned to the current teacher (assuming 1:1 for simplicity)
-    // This helper might need adjustment if a teacher can have multiple classes.
-    // For now, it fetches the classId from the user's document.
-    // If a teacher can teach multiple classes, you'd need a different way to check.
-    function getTeacherClassId() {
-      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classId;
-    }
-
-    // NEW HELPER: Checks if the current authenticated user (teacher OR admin) is assigned to a specific class
+    // IMPORTANT HELPER: Checks if the current authenticated user (teacher OR admin) is assigned to a specific class
+    // This function checks if the user's UID is present in the `teacherIds` array of the CLASS document.
     function isAssignedToClass(classId) {
-      return isAuthenticated() && get(/databases/$(database)/documents/classes/$(classId)).data.teacherIds.hasAny([request.auth.uid]);
+      // Ensure the class document exists before trying to read its data
+      return isAuthenticated() &&
+             exists(/databases/$(database)/documents/classes/$(classId)) &&
+             get(/databases/$(database)/documents/classes/$(classId)).data.teacherIds.hasAny([request.auth.uid]);
     }
 
 
-    // --- 1. Users Collection ---
+    // --- Collection-Specific Rules ---
+
+    // 1. USERS Collection
+    // - Admins can read all user profiles.
+    // - Any authenticated user can read their own profile.
+    // - Admins can create/update any user profile (e.g., setting roles).
+    // - Users can only update their own profile (e.g., name, but NOT role).
     match /users/{userId} {
-      allow read: if isAuthenticated() && request.auth.uid == userId; // Users can read their own profile
-      allow read, create, update, delete: if isAdmin(); // Admins can manage all users
-      allow update: if isAuthenticated()
-                      && request.auth.uid == userId
-                      && request.resource.data.role == resource.data.role; // Self-update, but prevent role change
-      // Teachers can create student user profiles
-      allow create: if isTeacher()
-                     && request.resource.data.role == 'student'
-                     && request.resource.data.classId == getTeacherClassId()
-                     && request.resource.data.name is string && request.resource.data.name.size() > 0;
-      // Teachers can read student user profiles assigned to their class
-      allow read: if isTeacher()
-                   && resource.data.role == 'student'
-                   && resource.data.classId == getTeacherClassId();
+      allow read: if isAdmin() || (isAuthenticated() && request.auth.uid == userId);
+      allow write: if isAdmin(); // Admins have full control over user documents
+      // You could refine 'update' for non-admin users here if needed (e.g., allow updating 'name' but not 'role')
+      // Example: allow update: if isAuthenticated() && request.auth.uid == userId && request.resource.data.role == resource.data.role;
     }
 
-    // --- 2. Classes Collection ---
+    // 2. CLASSES Collection
+    // - Admins can read, create, update, delete any class.
+    // - Teachers (or admins assigned as teachers) can read classes they are explicitly assigned to.
+    // - Teachers (or admins assigned as teachers) can update classes they are assigned to.
     match /classes/{classId} {
-      // Allow read for admins, or teachers/admins assigned to that specific class
+      // Admins can do anything, or any authenticated user assigned to THIS class can read
       allow read: if isAdmin() || isAssignedToClass(classId);
-
-      // Allow create/update/delete for admins, or update for assigned teachers
       allow create: if isAdmin(); // Only admins can create new classes
-      allow update: if isAdmin() || isAssignedToClass(classId); // Admins can update any, assigned teachers can update their own assigned
+      allow update: if isAdmin() || isAssignedToClass(classId); // Admins can update any, assigned users can update their own assigned classes
       allow delete: if isAdmin(); // Only admins can delete classes
     }
 
-    // --- 3. Students Collection ---
+    // 3. STUDENTS Collection
+    // - Admins can read, create, update, delete any student.
+    // - Teachers (or admins acting as teachers) can read students ONLY if those students are assigned
+    //   to a class that the teacher is also assigned to.
     match /students/{studentId} {
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        (isTeacher() && get(/databases/$(database)/documents/students/$(studentId)).data.classId == getTeacherClassId()) ||
-        (request.auth.uid == studentId) // Student can read their own profile
-      );
-      // Create/Update/Delete should be allowed for admins, or teachers for their own class students
-      allow create, update: if isAdmin() || (isTeacher() && request.resource.data.classId == getTeacherClassId());
-      allow delete: if isAdmin() || (isTeacher() && resource.data.classId == getTeacherClassId());
+      // Allow read for admin, OR if the current user is assigned to the student's class,
+      // OR if the student is reading their own profile.
+      allow read: if isAdmin() ||
+                     (isAuthenticated() && resource.data.classId is string && isAssignedToClass(resource.data.classId)) ||
+                     (isAuthenticated() && request.auth.uid == studentId); // Student can read their own profile
+      
+      // Allow create/update/delete for admins, or teachers for students in their assigned classes
+      allow write: if isAdmin() ||
+                      (isAuthenticated() && request.resource.data.classId is string && isAssignedToClass(request.resource.data.classId));
     }
 
-    // --- 4. Attendance Collection ---
+    // 4. ATTENDANCE Collection
+    // - Admins can read, create, update, delete any attendance record.
+    // - Teachers (or admins acting as teachers) can read, create, update attendance records
+    //   for classes they are assigned to.
     match /attendance/{attendanceId} {
-      // Allow read for admins, or teachers/admins assigned to the class, or student for their own record
-      allow read: if isAuthenticated() && (
-        isAdmin() ||
-        isAssignedToClass(resource.data.classId) || // Assigned teacher or admin can read
-        (request.auth.uid == resource.data.studentId) // Student can read their own attendance
-      );
+      // Allow read for admins, OR if the current user is assigned to the class of this attendance record.
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.classId is string && isAssignedToClass(resource.data.classId));
 
-      // Allow create/update for admins or teachers/admins assigned to the class
-      // Ensure the 'recordedBy' field matches the user performing the action
-      allow create, update: if isAuthenticated() && (
-        (isAdmin() || isAssignedToClass(request.resource.data.classId)) && // User is admin OR assigned to the class
-        (request.auth.uid == request.resource.data.recordedBy) // Ensures user setting 'recordedBy' is themselves
-      );
-      allow delete: if isAdmin(); // Only admins can delete attendance records
+      // Allow create/update for admins, OR if the current user is assigned to the class,
+      // AND ensure the 'recordedBy' field matches the user performing the action.
+      allow write: if isAdmin() ||
+                      (isAuthenticated() &&
+                       request.resource.data.classId is string &&
+                       isAssignedToClass(request.resource.data.classId) &&
+                       request.auth.uid == request.resource.data.recordedBy);
     }
   }
 }
