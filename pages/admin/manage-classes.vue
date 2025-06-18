@@ -7,6 +7,10 @@
       </button>
     </div>
 
+    <div v-if="message" :class="['alert mt-4', messageType === 'success' ? 'alert-success' : 'alert-danger']" role="alert">
+      {{ message }}
+    </div>
+
     <div v-if="loading" class="text-center my-5">
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading classes...</span>
@@ -53,10 +57,6 @@
           </tr>
         </tbody>
       </table>
-    </div>
-
-    <div v-if="message" :class="['alert mt-4', messageType === 'success' ? 'alert-success' : 'alert-danger']" role="alert">
-      {{ message }}
     </div>
 
     <AddEditClassModal

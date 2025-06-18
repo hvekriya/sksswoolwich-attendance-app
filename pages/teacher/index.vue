@@ -20,10 +20,6 @@
             <small class="form-text text-muted">Attendance is recorded for Saturdays only.</small>
           </div>
           <div class="col-md-6 text-md-end">
-            <button class="btn btn-primary" @click="saveAttendance" :disabled="loading || !students.length">
-              <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-              <span v-else>Save Attendance</span>
-            </button>
           </div>
         </div>
       </div>
@@ -69,7 +65,10 @@
         </tbody>
       </table>
     </div>
-
+    <button class="btn btn-primary" @click="saveAttendance" :disabled="loading || !students.length">
+      <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+      <span v-else>Save Attendance</span>
+    </button>
     <div v-if="saveMessage" :class="['alert mt-4', saveMessageType === 'success' ? 'alert-success' : 'alert-danger']" role="alert">
       {{ saveMessage }}
     </div>

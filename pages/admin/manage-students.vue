@@ -7,6 +7,20 @@
       </button>
     </div>
 
+    <div class="card shadow-sm p-3 mb-4">
+      <div class="row g-3 align-items-end">
+        <div class="col-md-6">
+          <label for="filterClass" class="form-label">Filter by Class</label>
+          <select class="form-select" id="filterClass" v-model="selectedFilterClassId">
+            <option :value="null">All Classes</option>
+            <option v-for="cls in classes" :key="cls.id" :value="cls.id">{{ cls.name }}</option>
+          </select>
+        </div>
+        <div class="col-md-6 text-md-end">
+          </div>
+      </div>
+    </div>
+
     <div v-if="loading" class="text-center my-5">
       <div class="spinner-border text-primary" role="status">
         <span class="visually-hidden">Loading students...</span>
@@ -15,7 +29,7 @@
     </div>
 
     <div v-if="!loading && students.length === 0" class="alert alert-info text-center mt-5">
-      No students found. Click "Add New Student" to get started.
+      No students found for the selected criteria.
     </div>
 
     <div v-if="!loading && students.length > 0" class="table-responsive">
@@ -63,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue'; // Import watch
 import { getFirestore, collection, query, where, getDocs, doc, deleteDoc } from 'firebase/firestore';
 
 import AddEditStudentModal from '~/components/admin/AddEditStudentModal.vue';
@@ -76,7 +90,7 @@ const nuxtApp = useNuxtApp();
 const db = nuxtApp.$db;
 
 const students = ref([]);
-const classes = ref([]); // For class dropdown in modal
+const classes = ref([]); // For class dropdown in modal AND filter
 const users = ref([]); // For displaying 'added by' user email
 const loading = ref(true);
 const message = ref(null);
@@ -85,14 +99,20 @@ const messageType = ref(null);
 const showStudentModal = ref(false);
 const selectedStudent = ref(null);
 
-const fetchStudentsClassesAndUsers = async () => {
+const selectedFilterClassId = ref(null); // New ref for the filter
+
+// Watch for changes in the selected filter class and re-fetch students
+watch(selectedFilterClassId, () => {
+  fetchStudentsOnly(); // Call a dedicated function to fetch only students
+});
+
+const fetchAllInitialData = async () => {
   loading.value = true;
-  students.value = [];
   classes.value = [];
   users.value = []; // To get 'addedBy' user emails
 
   try {
-    // Fetch all classes
+    // Fetch all classes (needed for both filter and modal)
     const classesSnapshot = await getDocs(collection(db, 'classes'));
     classes.value = classesSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
@@ -100,8 +120,32 @@ const fetchStudentsClassesAndUsers = async () => {
     const usersSnapshot = await getDocs(collection(db, 'users'));
     users.value = usersSnapshot.docs.map(d => ({ id: d.id, ...d.data() }));
 
-    // Fetch all students
-    const studentsSnapshot = await getDocs(collection(db, 'students'));
+    // Now fetch students based on the initial filter (which is null by default)
+    await fetchStudentsOnly();
+
+  } catch (error) {
+    console.error('Error fetching initial data (classes or users):', error);
+    message.value = `Failed to load initial data: ${error.message}`;
+    messageType.value = 'danger';
+  } finally {
+    loading.value = false;
+  }
+};
+
+
+const fetchStudentsOnly = async () => {
+  loading.value = true;
+  students.value = []; // Clear current students before fetching
+
+  try {
+    let studentsQuery = collection(db, 'students');
+
+    // Apply the class filter if a class is selected
+    if (selectedFilterClassId.value) {
+      studentsQuery = query(studentsQuery, where('classId', '==', selectedFilterClassId.value));
+    }
+
+    const studentsSnapshot = await getDocs(studentsQuery);
     const fetchedStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // Enhance student data with class name and 'addedBy' user email
@@ -115,15 +159,16 @@ const fetchStudentsClassesAndUsers = async () => {
       };
     });
   } catch (error) {
-    console.error('Error fetching students, classes, or users:', error);
-    message.value = `Failed to load data: ${error.message}`;
+    console.error('Error fetching students:', error);
+    message.value = `Failed to load students: ${error.message}`;
     messageType.value = 'danger';
   } finally {
     loading.value = false;
   }
 };
 
-onMounted(fetchStudentsClassesAndUsers);
+
+onMounted(fetchAllInitialData); // Call the new initial data fetcher
 
 const openAddStudentModal = () => {
   selectedStudent.value = null;
@@ -140,7 +185,9 @@ const closeStudentModal = () => {
 };
 
 const handleStudentSaved = async (data) => {
-  await fetchStudentsClassesAndUsers();
+  // After saving, re-fetch all data to ensure lists are up-to-date,
+  // respecting the current filter.
+  await fetchStudentsOnly();
   message.value = data.isNew ? 'Student added successfully!' : 'Student updated successfully!';
   messageType.value = 'success';
   closeStudentModal();
@@ -157,10 +204,21 @@ const deleteStudent = async (studentIdToDelete) => {
     // Delete student document
     await deleteDoc(doc(db, 'students', studentIdToDelete));
 
-    // Optional: Delete related attendance records (can be done with a Cloud Function for efficiency)
-    // For now, it's a manual deletion (not shown here to keep it simple, but consider it for production)
+    // To properly remove attendance records related to this student,
+    // you would typically use a Cloud Function triggered by student deletion.
+    // Manually deleting all here could be very slow and hit read/write limits.
+    // Example (not recommended for large scale without batching/functions):
+    /*
+    const attendanceQuery = query(collection(db, 'attendance'), where('studentId', '==', studentIdToDelete));
+    const attendanceSnapshot = await getDocs(attendanceQuery);
+    const deletePromises = [];
+    attendanceSnapshot.forEach(attDoc => {
+      deletePromises.push(deleteDoc(doc(db, 'attendance', attDoc.id)));
+    });
+    await Promise.all(deletePromises);
+    */
 
-    await fetchStudentsClassesAndUsers();
+    await fetchStudentsOnly(); // Re-fetch students with current filter
     message.value = 'Student deleted successfully!';
     messageType.value = 'success';
   } catch (error) {
@@ -176,4 +234,5 @@ const deleteStudent = async (studentIdToDelete) => {
 
 <style scoped>
 /* Specific styles for manage students page */
+/* Add or adjust styles for the new filter card as needed */
 </style>
