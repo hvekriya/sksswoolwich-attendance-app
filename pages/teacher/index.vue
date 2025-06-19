@@ -40,6 +40,10 @@
       No students found in your class. <NuxtLink to="/teacher/add-student" class="alert-link">Add a student</NuxtLink> to get started.
     </div>
 
+    <div v-if="!loadingStudents && students.length > 0 && !attendanceRecorded" class="alert alert-warning text-center mt-3" role="alert">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>Attendance has not been recorded for **{{ selectedDateDisplay }}**. Please mark students present or absent and click "Save Attendance".
+    </div>
+
     <div v-if="!loadingStudents && students.length > 0" class="table-responsive">
       <table class="table table-hover table-striped align-middle">
         <thead class="table-dark">
@@ -80,14 +84,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'; // Import 'watch'
+import { ref, onMounted, computed, watch } from 'vue';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs, setDoc, Timestamp } from 'firebase/firestore';
 import { format, subWeeks, startOfWeek, isSaturday, addDays } from 'date-fns';
 
 // Page-specific middleware
 definePageMeta({
-  middleware: ['auth', 'teacher'], // Assuming you will create a teacher.ts middleware similar to admin.ts
+  middleware: ['auth', 'teacher'],
 });
 
 // Access Firebase services
@@ -104,35 +108,31 @@ const attendanceStatus = ref({}); // { studentId: boolean }
 const selectedDateTimestamp = ref(null); // Unix timestamp for the selected Saturday
 const pastSaturdays = ref([]);
 const loadingStudents = ref(true);
-const loadingAttendance = ref(false); // Not currently used but good to keep
+const loadingAttendance = ref(false);
 const loading = ref(false); // For save button
 const saveMessage = ref(null);
 const saveMessageType = ref(null);
 
-// New refs for attendance counts
 const presentCount = ref(0);
 const absentCount = ref(0);
+const attendanceRecorded = ref(true); // New ref: Assume true until proven false
 
 // Computed property to convert selectedDateTimestamp to a Firebase Timestamp object
 const selectedDate = computed(() => {
   return selectedDateTimestamp.value ? Timestamp.fromMillis(selectedDateTimestamp.value) : null;
 });
 
+// Computed property to display the selected date in a readable format for the banner
+const selectedDateDisplay = computed(() => {
+  return selectedDateTimestamp.value ? format(new Date(selectedDateTimestamp.value), 'MMMM dd,yyyy') : '';
+});
+
+
 // Watch for changes in attendanceStatus and update counts
+// Use a deep watcher on attendanceStatus object
 watch(attendanceStatus.value, () => {
-  let currentPresent = 0;
-  let currentAbsent = 0;
-  // Ensure we only count students that are actually in the `students` list
-  students.value.forEach(student => {
-    if (attendanceStatus.value[student.id] === true) {
-      currentPresent++;
-    } else {
-      currentAbsent++;
-    }
-  });
-  presentCount.value = currentPresent;
-  absentCount.value = currentAbsent;
-}, { deep: true }); // Use deep: true to watch for changes inside the attendanceStatus object
+  updateAttendanceCounts();
+}, { deep: true });
 
 const addStudent = () => {
   router.push('/teacher/add-student');
@@ -140,17 +140,17 @@ const addStudent = () => {
 
 const generateSaturdays = () => {
   const today = new Date();
-  // Start from the most recent Saturday, including today if it's Saturday
   let currentSaturday = new Date(today);
+  // Ensure currentSaturday is actually a Saturday, if today is one. Otherwise, find the most recent past Saturday.
   if (!isSaturday(currentSaturday)) {
-    // If today is not Saturday, find the previous Saturday
-    currentSaturday = subWeeks(startOfWeek(today, { weekStartsOn: 0 }), 0); // This gets the Sunday of current week
-    if (!isSaturday(currentSaturday)) {
-      currentSaturday = addDays(currentSaturday, (6 - currentSaturday.getDay() + 7) % 7); // Find next Saturday from Sunday
+    // If today is not Saturday, go back to the previous Saturday.
+    // startOfWeek with weekStartsOn: 0 gives Sunday. Add 6 days to get Saturday.
+    currentSaturday = addDays(startOfWeek(today, { weekStartsOn: 0 }), 6);
+    // If the calculated Saturday is in the future, go back a week.
+    if (currentSaturday > today) {
+      currentSaturday = subWeeks(currentSaturday, 1);
     }
-    currentSaturday = subWeeks(currentSaturday, 1); // Go back one week to get the previous Saturday if today isn't one
   }
-
 
   const saturdays = [];
   // Generate past 8 Saturdays + current Saturday if it's a Saturday
@@ -158,7 +158,7 @@ const generateSaturdays = () => {
     const date = subWeeks(currentSaturday, i);
     saturdays.push({
       timestamp: Timestamp.fromDate(date),
-      displayDate: format(date, 'MMMM dd, yyyy') + (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd') && isSaturday(today) ? ' (Today)' : '')
+      displayDate: format(date, 'MMMM dd,yyyy') + (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd') && isSaturday(today) ? ' (Today)' : '')
     });
   }
   pastSaturdays.value = saturdays.reverse(); // Show oldest first
@@ -168,7 +168,10 @@ const generateSaturdays = () => {
 const fetchStudents = async () => {
   loadingStudents.value = true;
   students.value = [];
-  if (!classId.value) return;
+  if (!classId.value) {
+    loadingStudents.value = false;
+    return;
+  }
 
   try {
     const q = query(collection(db, 'students'), where('classId', '==', classId.value));
@@ -183,8 +186,7 @@ const fetchStudents = async () => {
     });
 
     // Manually trigger count update after students are loaded and attendanceStatus initialized
-    updateAttendanceCounts();
-
+    updateAttendanceCounts(); // Initial count assuming all absent
   } catch (error) {
     console.error('Error fetching students:', error);
     // You might want to use a global notification system here
@@ -198,6 +200,7 @@ const fetchAttendance = async () => {
 
   loadingAttendance.value = true;
   saveMessage.value = null;
+  attendanceRecorded.value = true; // Reset to true at the start of fetchAttendance
 
   // Reset attendance status to default (absent) for all *currently loaded* students before fetching
   students.value.forEach(student => {
@@ -211,15 +214,21 @@ const fetchAttendance = async () => {
       where('date', '==', selectedDate.value)
     );
     const querySnapshot = await getDocs(q);
-    querySnapshot.forEach(doc => {
-      const data = doc.data();
-      // Ensure student exists in the current 'students' array before updating status
-      if (students.value.some(s => s.id === data.studentId)) {
-        attendanceStatus.value[data.studentId] = data.present;
-      }
-    });
 
-    // Manually trigger count update after attendance is fetched
+    // Check if any attendance records were found for the selected date
+    if (querySnapshot.empty) {
+      attendanceRecorded.value = false; // No records found, so attendance is not recorded
+    } else {
+      querySnapshot.forEach(doc => {
+        const data = doc.data();
+        if (students.value.some(s => s.id === data.studentId)) {
+          attendanceStatus.value[data.studentId] = data.present;
+        }
+      });
+      attendanceRecorded.value = true; // Records were found
+    }
+
+    // Manually trigger count update after attendance is fetched (or determined empty)
     updateAttendanceCounts();
 
   } catch (error) {
@@ -244,7 +253,6 @@ const saveAttendance = async () => {
   try {
     for (const student of students.value) {
       const isPresent = attendanceStatus.value[student.id];
-      // Create a predictable document ID for easier updates
       const attendanceDocId = `${classId.value}_${selectedDate.value.toDate().toISOString().split('T')[0]}_${student.id}`;
       const attendanceRef = doc(db, 'attendance', attendanceDocId);
 
@@ -259,6 +267,7 @@ const saveAttendance = async () => {
     }
     saveMessage.value = 'Attendance saved successfully!';
     saveMessageType.value = 'success';
+    attendanceRecorded.value = true; // Mark as recorded after saving
   } catch (error) {
     console.error('Error saving attendance:', error);
     saveMessage.value = 'Failed to save attendance. Please try again.';
@@ -272,21 +281,17 @@ const saveAttendance = async () => {
 // Helper function to update present/absent counts
 const updateAttendanceCounts = () => {
   let currentPresent = 0;
-  let currentAbsent = 0;
   students.value.forEach(student => {
     if (attendanceStatus.value[student.id] === true) {
       currentPresent++;
-    } else {
-      currentAbsent++;
     }
   });
   presentCount.value = currentPresent;
-  absentCount.value = currentAbsent;
+  absentCount.value = students.value.length - currentPresent; // Calculate absent based on total students
 };
 
 
 onMounted(async () => {
-  // Wait for the Firebase auth state to be established
   const user = await new Promise(resolve => {
     const unsubscribe = auth.onAuthStateChanged(firebaseUser => {
       unsubscribe();
@@ -310,8 +315,10 @@ onMounted(async () => {
             console.warn(`Class with ID ${classId.value} not found.`);
           }
           generateSaturdays();
+          // *** IMPORTANT CHANGE HERE ***
+          // Fetch students first
           await fetchStudents();
-          // Fetch attendance for the initially selected date
+          // THEN, and only then, fetch attendance for the selected date
           if (selectedDate.value) {
             await fetchAttendance();
           }
@@ -319,6 +326,7 @@ onMounted(async () => {
           console.warn('Teacher is not assigned to a class.');
           className.value = 'No Class Assigned';
           loadingStudents.value = false;
+          attendanceRecorded.value = true; // No class, so no attendance to record state
         }
       } else {
         // If not a teacher or user data missing, redirect or show error
@@ -326,12 +334,13 @@ onMounted(async () => {
       }
     } catch (error) {
       console.error('Error fetching teacher data or class:', error);
-      //errorMessage.value = 'Failed to load teacher or class data.'; // You'd likely use a global notification
       loadingStudents.value = false;
+      attendanceRecorded.value = true; // Error, so no attendance state to show banner
     }
   } else {
     // User not logged in, auth middleware should handle redirect
     loadingStudents.value = false;
+    attendanceRecorded.value = true; // Not logged in, no attendance state
   }
 });
 </script>
