@@ -235,7 +235,6 @@ const deleteStudent = async (studentIdToDelete) => {
 };
 </script>
 
-<style scoped>
-/* Specific styles for manage students page */
-/* Add or adjust styles for the new filter card as needed */
+<style lang="scss" scoped>
+@import '../../assets/responsive_table';
 </style>

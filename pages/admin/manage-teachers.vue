@@ -182,6 +182,6 @@ const deleteTeacher = async (teacherIdToDelete) => {
 };
 </script>
 
-<style scoped>
-/* Specific styles for manage teachers page */
+<style lang="scss" scoped>
+@import '../../assets/responsive_table';
 </style>

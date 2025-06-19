@@ -65,13 +65,14 @@
           </table>
         </div>
       </div>
+
       <div class="row mb-4">
         <div class="col-md-6">
           <div class="card shadow-sm p-3 h-100">
             <h4 class="card-title text-center mb-3">Overall Attendance Summary</h4>
             <ClientOnly>
               <div v-if="hasChartData">
-                <Doughnut :data="doughnutChartData" :options="chartOptions" />
+                <Doughnut :data="doughnutChartData" :options="chartOptions" :key="reportGenerated" />
               </div>
               <div v-else class="text-center text-muted">No data for attendance summary.</div>
               <template #fallback>
@@ -85,7 +86,7 @@
             <h4 class="card-title text-center mb-3">Attendance Trend Over Time</h4>
             <ClientOnly>
               <div v-if="hasChartData">
-                <Line :data="lineChartData" :options="chartOptions" />
+                <Line :data="lineChartData" :options="chartOptions" :key="reportGenerated" />
               </div>
               <div v-else class="text-center text-muted">No data for attendance trend.</div>
               <template #fallback>
@@ -96,10 +97,46 @@
         </div>
       </div>
 
-      <AttendanceReportTable
-        :report-data="reportData"
-        :unique-dates="uniqueDates"
+      <div class="d-none d-md-block">
+        <AttendanceReportTable
+          :report-data="reportData"
+          :unique-dates="uniqueDates"
         />
+      </div>
+
+      <div class="d-md-none mt-4">
+        <h3 class="mb-3">Student Attendance Details</h3>
+        <div class="report-cards-container">
+          <div v-for="studentReport in reportData" :key="studentReport.studentId" class="card student-attendance-card mb-3 shadow-sm">
+            <div class="card-body">
+              <h5 class="card-title text-primary">
+                {{ studentReport.studentName }}
+                <span class="badge bg-info text-dark ms-2">{{ studentReport.className }}</span>
+              </h5>
+              <div class="d-flex justify-content-between align-items-center mb-3">
+                <span class="text-success fw-bold">Present: {{ studentReport.totalPresent }}</span>
+                <span class="text-danger fw-bold">Absent: {{ studentReport.totalAbsent }}</span>
+              </div>
+
+              <h6>Attendance by Date:</h6>
+              <div class="attendance-dates-list">
+                <div v-for="date in uniqueDates" :key="date" class="d-flex justify-content-between align-items-center attendance-item py-1">
+                  <span class="text-muted">{{ formatDateShort(date) }}</span>
+                  <span v-if="studentReport.attendance[date] === true" class="badge bg-success">P</span>
+                  <span v-else-if="studentReport.attendance[date] === false" class="badge bg-danger">A</span>
+                  <span v-else class="badge bg-secondary">-</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="d-flex justify-content-end mt-3">
+        <button class="btn btn-success" @click="exportReport" :disabled="reportData.length === 0">
+          <i class="bi bi-file-earmark-arrow-down-fill me-2"></i>Export to CSV
+        </button>
+      </div>
     </div>
 
     <div v-if="!loading && reportData.length === 0 && reportGenerated" class="alert alert-warning text-center mt-5">
@@ -139,7 +176,7 @@ const reportData = ref([]);
 const uniqueDates = ref([]);
 const loading = ref(false);
 const errorMessage = ref(null);
-const reportGenerated = ref(false);
+const reportGenerated = ref(false); // This will be used as a key
 
 const chartOptions = {
   responsive: true,
@@ -268,7 +305,7 @@ const generateReport = async () => {
   errorMessage.value = null;
   reportData.value = [];
   uniqueDates.value = [];
-  reportGenerated.value = false;
+  reportGenerated.value = false; // Reset before generating
 
   const startParsed = parseISO(startDate.value);
   const endParsed = parseISO(endDate.value);
@@ -315,13 +352,14 @@ const generateReport = async () => {
       studentNames[doc.id] = data.name;
       const classNameObj = classes.value.find(c => c.id === data.classId);
       studentClasses[doc.id] = classNameObj ? classNameObj.name : 'Unknown Class';
-      attendanceRecords[doc.id] = {};
+      attendanceRecords[doc.id] = {}; // Initialize attendance for each student
     });
 
     attendanceSnapshot.forEach(doc => {
       const data = doc.data();
       const dateString = format(data.date.toDate(), 'yyyy-MM-dd');
       datesSet.add(dateString);
+      // Ensure studentAttendance object exists before assigning
       if (!attendanceRecords[data.studentId]) {
           attendanceRecords[data.studentId] = {};
       }
@@ -330,9 +368,9 @@ const generateReport = async () => {
 
     uniqueDates.value = Array.from(datesSet).sort();
 
-    if (Object.keys(studentNames).length === 0) {
+    if (Object.keys(studentNames).length === 0 && attendanceSnapshot.empty) {
       loading.value = false;
-      reportGenerated.value = true;
+      reportGenerated.value = true; // Still set to true even if no data, to trigger updates
       return;
     }
 
@@ -347,9 +385,12 @@ const generateReport = async () => {
         if (isPresentRecorded === true) {
           fullAttendance[date] = true;
           totalPresent++;
-        } else {
+        } else if (isPresentRecorded === false) {
           fullAttendance[date] = false;
           totalAbsent++;
+        } else {
+          fullAttendance[date] = null; // Use null to indicate "Not Recorded"
+          totalAbsent++; // Count as absent if not recorded for report purposes
         }
       });
 
@@ -362,7 +403,7 @@ const generateReport = async () => {
         totalAbsent,
       };
     });
-    reportGenerated.value = true;
+    reportGenerated.value = true; // Set to true after data is populated
   } catch (error) {
     console.error('Error generating report:', error);
     errorMessage.value = `Failed to generate report: ${error.message}`;
@@ -371,14 +412,122 @@ const generateReport = async () => {
   }
 };
 
-// Removed the exportReport function as it's handled by AttendanceReportTable.vue
+// Helper function for date formatting (used by mobile cards and CSV export)
+const formatDateShort = (dateString) => {
+  if (!dateString) return '';
+  try {
+    return format(parseISO(dateString), 'MMM dd');
+  } catch (e) {
+    console.error("Error formatting date:", dateString, e);
+    return dateString;
+  }
+};
 
+// Export Report function (moved here to be consistent across desktop/mobile views)
+const exportReport = () => {
+  if (reportData.value.length === 0 || uniqueDates.value.length === 0) {
+    alert('No data to export.');
+    return;
+  }
+
+  let csvRows = [];
+
+  // Headers
+  const headers = ['Class', 'Student Name', ...uniqueDates.value.map(d => formatDateShort(d)), 'Total Present', 'Total Absent'];
+  csvRows.push(headers.map(h => `"${h.replace(/"/g, '""')}"`).join(','));
+
+  // Rows
+  reportData.value.forEach(student => {
+    let rowData = [
+      `"${student.className.replace(/"/g, '""')}"`,
+      `"${student.studentName.replace(/"/g, '""')}"`,
+    ];
+
+    uniqueDates.value.forEach(date => {
+      const status = student.attendance[date];
+      if (status === true) {
+        rowData.push('P');
+      } else if (status === false) {
+        rowData.push('A');
+      } else {
+        rowData.push('-');
+      }
+    });
+    rowData.push(student.totalPresent, student.totalAbsent);
+    csvRows.push(rowData.join(','));
+  });
+
+  const csvString = csvRows.join('\n');
+  const blob = new Blob([csvString], { type: 'text/csv;charset=utf-8;' });
+
+  const filename = `attendance_report_${format(new Date(), 'yyyyMMdd_HHmmss')}.csv`;
+
+  const link = document.createElement("a");
+  link.setAttribute("href", URL.createObjectURL(blob));
+  link.setAttribute("download", filename);
+  link.style.display = 'none';
+  document.body.appendChild(link);
+  link.click();
+  document.body.removeChild(link);
+  URL.revokeObjectURL(link.href);
+};
 </script>
 
 <style scoped>
-/* Specific styles for reports page */
+/* Common styles */
 .text-success { color: #28a745; }
 .text-warning { color: #ffc107; }
 .text-danger { color: #dc3545; }
 .fw-bold { font-weight: bold; }
+
+/* Styles for Stacked Cards (Mobile View) */
+.report-cards-container {
+  /* Optional: Add some padding or margin if needed */
+}
+
+.student-attendance-card {
+  border: 1px solid #e0e0e0;
+}
+
+.card-title .badge {
+  font-size: 0.8rem;
+}
+
+.attendance-dates-list {
+  max-height: 200px; /* Limit height for long lists of dates */
+  overflow-y: auto; /* Enable vertical scrolling within the list */
+  border: 1px solid #f0f0f0;
+  border-radius: 0.25rem;
+  padding: 0.5rem;
+  background-color: #f8f9fa; /* Light background for the date list */
+}
+
+.attendance-item {
+  font-size: 0.9rem;
+}
+
+.attendance-item:not(:last-child) {
+  border-bottom: 1px dashed #e9ecef; /* Subtle separator */
+}
+
+.attendance-item span.badge {
+  min-width: 25px; /* Ensure badges have consistent width */
+  text-align: center;
+  font-size: 0.8em; /* Make badges slightly smaller for mobile */
+}
+
+/* Bootstrap responsive utility classes for display */
+/* Hide Main Student Table on extra small and small screens (d-none d-md-block on parent div) */
+@media (max-width: 767.98px) {
+  .d-none.d-md-block {
+    display: none !important;
+  }
+}
+
+/* Hide Stacked Cards on medium and larger screens (d-md-none on parent div) */
+@media (min-width: 768px) {
+  .d-md-none {
+    display: none !important;
+  }
+}
 </style>
