@@ -20,6 +20,10 @@
             <small class="form-text text-muted">Attendance is recorded for Saturdays only.</small>
           </div>
           <div class="col-md-6 text-md-end">
+            <p class="mb-0">
+              <span class="badge bg-success me-2">Present: {{ presentCount }}</span>
+              <span class="badge bg-danger">Absent: {{ absentCount }}</span>
+            </p>
           </div>
         </div>
       </div>
@@ -76,7 +80,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue'; // Import 'watch'
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs, setDoc, Timestamp } from 'firebase/firestore';
 import { format, subWeeks, startOfWeek, isSaturday, addDays } from 'date-fns';
@@ -105,10 +109,30 @@ const loading = ref(false); // For save button
 const saveMessage = ref(null);
 const saveMessageType = ref(null);
 
+// New refs for attendance counts
+const presentCount = ref(0);
+const absentCount = ref(0);
+
 // Computed property to convert selectedDateTimestamp to a Firebase Timestamp object
 const selectedDate = computed(() => {
   return selectedDateTimestamp.value ? Timestamp.fromMillis(selectedDateTimestamp.value) : null;
 });
+
+// Watch for changes in attendanceStatus and update counts
+watch(attendanceStatus.value, () => {
+  let currentPresent = 0;
+  let currentAbsent = 0;
+  // Ensure we only count students that are actually in the `students` list
+  students.value.forEach(student => {
+    if (attendanceStatus.value[student.id] === true) {
+      currentPresent++;
+    } else {
+      currentAbsent++;
+    }
+  });
+  presentCount.value = currentPresent;
+  absentCount.value = currentAbsent;
+}, { deep: true }); // Use deep: true to watch for changes inside the attendanceStatus object
 
 const addStudent = () => {
   router.push('/teacher/add-student');
@@ -116,10 +140,17 @@ const addStudent = () => {
 
 const generateSaturdays = () => {
   const today = new Date();
-  let currentSaturday = startOfWeek(today, { weekStartsOn: 0 }); // Sunday as start of week
+  // Start from the most recent Saturday, including today if it's Saturday
+  let currentSaturday = new Date(today);
   if (!isSaturday(currentSaturday)) {
-    currentSaturday = addDays(currentSaturday, (6 - currentSaturday.getDay() + 7) % 7); // Find next Saturday
+    // If today is not Saturday, find the previous Saturday
+    currentSaturday = subWeeks(startOfWeek(today, { weekStartsOn: 0 }), 0); // This gets the Sunday of current week
+    if (!isSaturday(currentSaturday)) {
+      currentSaturday = addDays(currentSaturday, (6 - currentSaturday.getDay() + 7) % 7); // Find next Saturday from Sunday
+    }
+    currentSaturday = subWeeks(currentSaturday, 1); // Go back one week to get the previous Saturday if today isn't one
   }
+
 
   const saturdays = [];
   // Generate past 8 Saturdays + current Saturday if it's a Saturday
@@ -127,7 +158,7 @@ const generateSaturdays = () => {
     const date = subWeeks(currentSaturday, i);
     saturdays.push({
       timestamp: Timestamp.fromDate(date),
-      displayDate: format(date, 'MMMM dd, yyyy') + (i === 0 && isSaturday(today) ? ' (Today)' : '')
+      displayDate: format(date, 'MMMM dd, yyyy') + (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd') && isSaturday(today) ? ' (Today)' : '')
     });
   }
   pastSaturdays.value = saturdays.reverse(); // Show oldest first
@@ -142,11 +173,18 @@ const fetchStudents = async () => {
   try {
     const q = query(collection(db, 'students'), where('classId', '==', classId.value));
     const querySnapshot = await getDocs(q);
-    students.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Sort students by name A-Z
+    students.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                                     .sort((a, b) => a.name.localeCompare(b.name));
+
     // Initialize attendance status for all students as absent by default
     students.value.forEach(student => {
       attendanceStatus.value[student.id] = false;
     });
+
+    // Manually trigger count update after students are loaded and attendanceStatus initialized
+    updateAttendanceCounts();
+
   } catch (error) {
     console.error('Error fetching students:', error);
     // You might want to use a global notification system here
@@ -161,7 +199,7 @@ const fetchAttendance = async () => {
   loadingAttendance.value = true;
   saveMessage.value = null;
 
-  // Reset attendance status to default (absent) before fetching
+  // Reset attendance status to default (absent) for all *currently loaded* students before fetching
   students.value.forEach(student => {
     attendanceStatus.value[student.id] = false;
   });
@@ -175,10 +213,15 @@ const fetchAttendance = async () => {
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach(doc => {
       const data = doc.data();
-      if (attendanceStatus.value.hasOwnProperty(data.studentId)) { // Ensure student exists
+      // Ensure student exists in the current 'students' array before updating status
+      if (students.value.some(s => s.id === data.studentId)) {
         attendanceStatus.value[data.studentId] = data.present;
       }
     });
+
+    // Manually trigger count update after attendance is fetched
+    updateAttendanceCounts();
+
   } catch (error) {
     console.error('Error fetching attendance:', error);
     // You might want to use a global notification system here
@@ -225,6 +268,22 @@ const saveAttendance = async () => {
     setTimeout(() => saveMessage.value = null, 3000); // Clear message after 3 seconds
   }
 };
+
+// Helper function to update present/absent counts
+const updateAttendanceCounts = () => {
+  let currentPresent = 0;
+  let currentAbsent = 0;
+  students.value.forEach(student => {
+    if (attendanceStatus.value[student.id] === true) {
+      currentPresent++;
+    } else {
+      currentAbsent++;
+    }
+  });
+  presentCount.value = currentPresent;
+  absentCount.value = currentAbsent;
+};
+
 
 onMounted(async () => {
   // Wait for the Firebase auth state to be established

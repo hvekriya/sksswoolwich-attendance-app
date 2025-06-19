@@ -77,7 +77,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'; // Import watch
+import { ref, onMounted, watch } from 'vue';
 import { getFirestore, collection, query, where, getDocs, doc, deleteDoc } from 'firebase/firestore';
 
 import AddEditStudentModal from '~/components/admin/AddEditStudentModal.vue';
@@ -146,7 +146,10 @@ const fetchStudentsOnly = async () => {
     }
 
     const studentsSnapshot = await getDocs(studentsQuery);
-    const fetchedStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    let fetchedStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+
+    // --- NEW: Sort students by name A-Z ---
+    fetchedStudents.sort((a, b) => a.name.localeCompare(b.name));
 
     // Enhance student data with class name and 'addedBy' user email
     students.value = fetchedStudents.map(student => {

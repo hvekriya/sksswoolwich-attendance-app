@@ -2,7 +2,8 @@
   <div class="container mt-4">
     <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4">
       <h2 class="mb-2 mb-md-0">Class Attendance: <span class="text-primary">{{ className }}</span></h2>
-      <div class="d-flex gap-2 flex-wrap"> <button class="btn btn-secondary" @click="goBackToClasses">
+      <div class="d-flex gap-2 flex-wrap">
+        <button class="btn btn-secondary" @click="goBackToClasses">
           <i class="bi bi-arrow-left-circle me-2"></i>Back to All Classes
         </button>
         <NuxtLink :to="`/admin/manage-students`" class="btn btn-success">Manage students</NuxtLink>
@@ -22,6 +23,10 @@
             <small class="form-text text-muted">Attendance is recorded for Saturdays only.</small>
           </div>
           <div class="col-md-6 text-md-end">
+            <p class="mb-0">
+              <span class="badge bg-success me-2">Present: {{ presentCount }}</span>
+              <span class="badge bg-danger">Absent: {{ absentCount }}</span>
+            </p>
           </div>
         </div>
       </div>
@@ -36,7 +41,7 @@
 
     <div v-if="!loadingStudents && students.length === 0" class="alert alert-info text-center mt-5">
       No students found in this class.
-      <NuxtLink :to="`/admin/manage-students`" class="alert-link">Mange students</NuxtLink> to assign a class to them.
+      <NuxtLink :to="`/admin/manage-students`" class="alert-link">Manage students</NuxtLink> to assign a class to them.
     </div>
 
     <div v-if="!loadingStudents && students.length > 0" class="table-responsive">
@@ -81,7 +86,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue';
+import { ref, onMounted, computed, watch } from 'vue'; // Import 'watch'
 import { useRoute } from 'vue-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs, setDoc, Timestamp } from 'firebase/firestore';
@@ -111,9 +116,18 @@ const loading = ref(false);
 const saveMessage = ref(null);
 const saveMessageType = ref(null);
 
+// New refs for attendance counts
+const presentCount = ref(0);
+const absentCount = ref(0);
+
 const selectedDate = computed(() => {
   return selectedDateTimestamp.value ? Timestamp.fromMillis(selectedDateTimestamp.value) : null;
 });
+
+// Watch for changes in attendanceStatus and update counts
+watch(attendanceStatus.value, () => {
+  updateAttendanceCounts();
+}, { deep: true }); // Use deep: true to watch for changes inside the attendanceStatus object
 
 // --- Data Fetching Functions ---
 const fetchClassName = async (classIdToFetch) => {
@@ -146,10 +160,18 @@ const fetchStudents = async () => {
   try {
     const q = query(collection(db, 'students'), where('classId', '==', currentClassId.value));
     const querySnapshot = await getDocs(q);
-    students.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    // Sort students by name A-Z
+    students.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
+                                     .sort((a, b) => a.name.localeCompare(b.name));
+
+    // Initialize attendance status for all students as absent by default
     students.value.forEach(student => {
       attendanceStatus.value[student.id] = false;
     });
+
+    // Manually trigger count update after students are loaded and attendanceStatus initialized
+    updateAttendanceCounts();
+
   } catch (error) {
     console.error('Error fetching students:', error);
     saveMessage.value = 'Error fetching students for this class: ' + error.message;
@@ -165,6 +187,7 @@ const fetchAttendance = async () => {
   loadingAttendance.value = true;
   saveMessage.value = null;
 
+  // Reset attendance status to default (absent) for all *currently loaded* students before fetching
   students.value.forEach(student => {
     attendanceStatus.value[student.id] = false;
   });
@@ -178,10 +201,15 @@ const fetchAttendance = async () => {
     const querySnapshot = await getDocs(q);
     querySnapshot.forEach(doc => {
       const data = doc.data();
-      if (attendanceStatus.value.hasOwnProperty(data.studentId)) {
+      // Ensure student exists in the current 'students' array before updating status
+      if (students.value.some(s => s.id === data.studentId)) {
         attendanceStatus.value[data.studentId] = data.present;
       }
     });
+
+    // Manually trigger count update after attendance is fetched
+    updateAttendanceCounts();
+
   } catch (error) {
     console.error('Error fetching attendance:', error);
     saveMessage.value = 'Error fetching attendance for this date: ' + error.message;
@@ -193,13 +221,9 @@ const fetchAttendance = async () => {
 
 // --- Utility Functions ---
 const addStudent = () => {
-  if (currentClassId.value) {
-    router.push(`/teacher/add-student?classId=${currentClassId.value}`);
-  } else {
-    saveMessage.value = 'No class selected to add student to.';
-    saveMessageType.value = 'danger';
-    setTimeout(() => saveMessage.value = null, 3000);
-  }
+  // Directing to admin/manage-students as an admin would manage all students there
+  // The teacher version had a specific add-student route.
+  router.push(`/admin/manage-students`);
 };
 
 const goBackToClasses = () => {
@@ -208,9 +232,14 @@ const goBackToClasses = () => {
 
 const generateSaturdays = () => {
   const today = new Date();
-  let currentSaturday = startOfWeek(today, { weekStartsOn: 0 }); // Sunday as start of week
+  let currentSaturday = new Date(today);
   if (!isSaturday(currentSaturday)) {
-    currentSaturday = addDays(currentSaturday, (6 - currentSaturday.getDay() + 7) % 7); // Find next Saturday
+    // If today is not Saturday, find the previous Saturday
+    currentSaturday = subWeeks(startOfWeek(today, { weekStartsOn: 0 }), 0); // This gets the Sunday of current week
+    if (!isSaturday(currentSaturday)) {
+      currentSaturday = addDays(currentSaturday, (6 - currentSaturday.getDay() + 7) % 7); // Find next Saturday from Sunday
+    }
+    currentSaturday = subWeeks(currentSaturday, 1); // Go back one week to get the previous Saturday if today isn't one
   }
 
   const saturdays = [];
@@ -218,12 +247,13 @@ const generateSaturdays = () => {
     const date = subWeeks(currentSaturday, i);
     saturdays.push({
       timestamp: Timestamp.fromDate(date),
-      displayDate: format(date, 'MMMM dd,yyyy') + (i === 0 && isSaturday(today) ? ' (Today)' : '')
+      displayDate: format(date, 'MMMM dd,yyyy') + (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd') && isSaturday(today) ? ' (Today)' : '')
     });
   }
   pastSaturdays.value = saturdays.reverse(); // Show oldest first
   selectedDateTimestamp.value = pastSaturdays.value[pastSaturdays.value.length - 1]?.timestamp.toMillis(); // Default to most recent Saturday
 };
+
 
 const saveAttendance = async () => {
   loading.value = true;
@@ -269,15 +299,35 @@ const saveAttendance = async () => {
   }
 };
 
+// Helper function to update present/absent counts
+const updateAttendanceCounts = () => {
+  let currentPresent = 0;
+  let currentAbsent = 0;
+  // Make sure students.value is populated before trying to count
+  if (students.value.length > 0) {
+    students.value.forEach(student => {
+      // Check if the student's status is explicitly true (present)
+      // Otherwise, consider them absent (false, undefined, or null)
+      if (attendanceStatus.value[student.id] === true) {
+        currentPresent++;
+      } else {
+        currentAbsent++;
+      }
+    });
+  }
+  presentCount.value = currentPresent;
+  absentCount.value = currentAbsent;
+};
+
 
 // --- Watcher for currentClassId ---
 watch(currentClassId, async (newClassId) => {
   if (newClassId) {
     loadingStudents.value = true;
     await fetchClassName(newClassId);
-    await fetchStudents();
+    await fetchStudents(); // This will also call updateAttendanceCounts
     if (selectedDate.value) {
-      await fetchAttendance();
+      await fetchAttendance(); // This will also call updateAttendanceCounts
     }
   } else {
     className.value = 'No Class Selected';
@@ -286,6 +336,7 @@ watch(currentClassId, async (newClassId) => {
     loadingStudents.value = false;
     saveMessage.value = 'Invalid class ID provided in URL.';
     saveMessageType.value = 'danger';
+    updateAttendanceCounts(); // Update counts even if no class is selected
   }
 }, { immediate: true });
 
@@ -309,6 +360,7 @@ onMounted(async () => {
     saveMessage.value = 'No class ID provided in the URL. Please navigate from the Manage Classes page.';
     saveMessageType.value = 'danger';
     loadingStudents.value = false;
+    updateAttendanceCounts(); // Update counts if no class ID is present
     return;
   }
 
