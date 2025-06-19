@@ -20,43 +20,78 @@
     <div v-else-if="classes.length === 0" class="alert alert-info text-center mt-5">
       No classes found. Click "Create New Class" to add one.
     </div>
-    <div v-else class="table-responsive">
-      <table class="table table-striped table-hover align-middle">
-        <thead class="table-dark">
-          <tr>
-            <th>Class Name</th>
-            <th>Assigned Teachers</th>
-            <th>Created By</th>
-            <th>Created At</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          <tr v-for="cls in classes" :key="cls.id">
-            <td data-label="Name">{{ cls.name }}</td>
-            <td data-label="Teachers">
+    <div v-else>
+      <div class="d-none d-md-block table-responsive">
+        <table class="table table-striped table-hover align-middle">
+          <thead class="table-dark">
+            <tr>
+              <th>Class Name</th>
+              <th>Assigned Teachers</th>
+              <th>Created By</th>
+              <th>Created At</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="cls in classes" :key="cls.id">
+              <td data-label="Name">{{ cls.name }}</td>
+              <td data-label="Teachers">
+                <span v-if="cls.teacherNames && cls.teacherNames.length">
+                  {{ cls.teacherNames.join(', ') }}
+                </span>
+                <span v-else class="text-muted">No teachers assigned</span>
+              </td>
+              <td data-label="Created by">{{ cls.createdByUserEmail || 'N/A' }}</td>
+              <td data-label="Created on">{{ formatDate(cls.createdAt) }}</td>
+              <td data-label="Actions">
+                <div class="d-flex flex-wrap gap-2">
+                  <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
+                    <i class="bi bi-calendar-check-fill me-1"></i> Attendance
+                  </NuxtLink>
+                  <button class="btn btn-sm btn-info" @click="openEditClassModal(cls)" title="Edit Class">
+                    <i class="bi bi-pencil-fill me-1"></i> Edit
+                  </button>
+                  <button class="btn btn-sm btn-danger" @click="deleteClassConfirmation(cls)" title="Delete Class">
+                    <i class="bi bi-trash-fill me-1"></i> Delete
+                  </button>
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="d-md-none mt-3">
+        <div v-for="cls in classes" :key="cls.id" class="card mb-3 shadow-sm">
+          <div class="card-body">
+            <h5 class="card-title text-primary">{{ cls.name }}</h5>
+            <p class="card-text mb-1">
+              <strong>Teachers:</strong>
               <span v-if="cls.teacherNames && cls.teacherNames.length">
                 {{ cls.teacherNames.join(', ') }}
               </span>
               <span v-else class="text-muted">No teachers assigned</span>
-            </td>
-            <td data-label="Created by">{{ cls.createdByUserEmail || 'N/A' }}</td>
-            <td data-label="Created on">{{ formatDate(cls.createdAt) }}</td>
-            <td data-label="Actions">
-              <div class="d-flex flex-wrap gap-2"> <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
-                  <i class="bi bi-calendar-check-fill me-1"></i> Attendance
-                </NuxtLink>
-                <button class="btn btn-sm btn-info" @click="openEditClassModal(cls)" title="Edit Class">
-                  <i class="bi bi-pencil-fill me-1"></i> Edit
-                </button>
-                <button class="btn btn-sm btn-danger" @click="deleteClassConfirmation(cls)" title="Delete Class">
-                  <i class="bi bi-trash-fill me-1"></i> Delete
-                </button>
-              </div>
-            </td>
-          </tr>
-        </tbody>
-      </table>
+            </p>
+            <p class="card-text mb-1">
+              <strong>Created By:</strong> {{ cls.createdByUserEmail || 'N/A' }}
+            </p>
+            <p class="card-text mb-3">
+              <strong>Created At:</strong> {{ formatDate(cls.createdAt) }}
+            </p>
+            <div class="d-flex flex-wrap gap-2">
+              <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
+                <i class="bi bi-calendar-check-fill me-1"></i> Attendance
+              </NuxtLink>
+              <button class="btn btn-sm btn-info" @click="openEditClassModal(cls)" title="Edit Class">
+                <i class="bi bi-pencil-fill me-1"></i> Edit
+              </button>
+              <button class="btn btn-sm btn-danger" @click="deleteClassConfirmation(cls)" title="Delete Class">
+                <i class="bi bi-trash-fill me-1"></i> Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
     </div>
 
     <AddEditClassModal
@@ -127,7 +162,8 @@ const formatDate = (timestamp) => {
   if (!timestamp) return 'N/A';
   // Firestore timestamps are objects, convert to JS Date
   const date = timestamp.toDate();
-  return date.toLocaleString(); // Or format as desired
+  // Using toLocaleDateString and toLocaleTimeString for better readability
+  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
 };
 
 const showPageMessage = (msg, type = 'success') => {
@@ -254,5 +290,49 @@ onMounted(fetchClassesAndUsers);
 }
 .d-flex.flex-wrap.gap-2 { /* Added for the action buttons layout */
   gap: 0.5rem; /* Standard Bootstrap gap for spacing */
+}
+
+/* Responsive Table Styling (for Mobile: hiding table headers, showing data labels) */
+@media (max-width: 767.98px) {
+  /* Hide table headers on small screens */
+  table.table thead {
+    display: none;
+  }
+
+  /* Make table rows behave like blocks */
+  table.table tbody tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  }
+
+  /* Make table data cells behave like blocks */
+  table.table tbody td {
+    display: block;
+    text-align: right !important;
+    padding-left: 50%; /* Make space for the data label */
+    position: relative;
+    border: none; /* Remove cell borders within the "card" */
+  }
+
+  /* Use pseudo-elements for data labels on mobile */
+  table.table tbody td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    width: calc(50% - 20px); /* Adjust width for label */
+    padding-right: 10px;
+    text-align: left;
+    font-weight: bold;
+    color: #495057;
+  }
+
+  /* Special handling for action buttons in the mobile table view if it were used */
+  table.table tbody td[data-label="Actions"] {
+    text-align: left !important; /* Override right-align for action buttons */
+    padding-left: 10px; /* Reset padding for action column */
+  }
 }
 </style>

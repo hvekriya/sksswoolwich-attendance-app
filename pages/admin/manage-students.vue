@@ -32,7 +32,7 @@
       No students found for the selected criteria.
     </div>
 
-    <div v-if="!loading && students.length > 0" class="table-responsive">
+    <div v-if="!loading && students.length > 0" class="d-none d-md-block table-responsive">
       <table class="table table-hover table-striped align-middle">
         <thead class="table-dark">
           <tr>
@@ -60,6 +60,31 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div v-if="!loading && students.length > 0" class="d-md-none mt-3">
+      <div v-for="student in students" :key="student.id" class="card mb-3 shadow-sm student-card-mobile">
+        <div class="card-body">
+          <h5 class="card-title text-primary">{{ student.name }}</h5>
+          <p class="card-text mb-1">
+            <strong>Email:</strong> {{ student.email || 'N/A' }}
+          </p>
+          <p class="card-text mb-1">
+            <strong>Class:</strong> {{ student.className || 'N/A' }}
+          </p>
+          <p class="card-text mb-3">
+            <strong>Added By:</strong> {{ student.addedByEmail || 'N/A' }}
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-info" @click="openEditStudentModal(student)">
+              <i class="bi bi-pencil-fill me-1"></i> Edit
+            </button>
+            <button class="btn btn-sm btn-danger" @click="deleteStudent(student.id)">
+              <i class="bi bi-trash-fill me-1"></i> Delete
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <div v-if="message" :class="['alert mt-4', messageType === 'success' ? 'alert-success' : 'alert-danger']" role="alert">
@@ -138,14 +163,18 @@ const fetchStudentsOnly = async () => {
   students.value = []; // Clear current students before fetching
 
   try {
-    let studentsQuery = collection(db, 'students');
+    let studentsCollectionRef = collection(db, 'students');
+    let studentsQueryToExecute;
 
     // Apply the class filter if a class is selected
     if (selectedFilterClassId.value) {
-      studentsQuery = query(studentsQuery, where('classId', '==', selectedFilterClassId.value));
+      studentsQueryToExecute = query(studentsCollectionRef, where('classId', '==', selectedFilterClassId.value));
+    } else {
+      studentsQueryToExecute = query(studentsCollectionRef); // No filter applied
     }
 
-    const studentsSnapshot = await getDocs(studentsQuery);
+
+    const studentsSnapshot = await getDocs(studentsQueryToExecute);
     let fetchedStudents = studentsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
 
     // --- NEW: Sort students by name A-Z ---
@@ -236,5 +265,68 @@ const deleteStudent = async (studentIdToDelete) => {
 </script>
 
 <style lang="scss" scoped>
-@import '../../assets/responsive_table';
+/* Common styles for both desktop table & mobile cards for consistent action button spacing */
+.d-flex.flex-wrap.gap-2 {
+  gap: 0.5rem; /* Standard Bootstrap gap for spacing buttons */
+}
+
+/* Specific styles for the mobile card view */
+.student-card-mobile {
+  border: 1px solid #e0e0e0;
+}
+
+.student-card-mobile .card-title {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.student-card-mobile .card-text strong {
+  display: inline-block;
+  min-width: 90px; /* Align labels */
+}
+
+/* Responsive Table Styling (for Mobile: hiding table headers, showing data labels) */
+/* These styles apply to the table structure, useful if you ever wanted a responsive table for some elements */
+@media (max-width: 767.98px) {
+  /* Hide table headers on small screens */
+  table.table thead {
+    display: none;
+  }
+
+  /* Make table rows behave like blocks */
+  table.table tbody tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  }
+
+  /* Make table data cells behave like blocks */
+  table.table tbody td {
+    display: block;
+    text-align: right !important;
+    padding-left: 50%; /* Make space for the data label */
+    position: relative;
+    border: none; /* Remove cell borders within the "card" */
+  }
+
+  /* Use pseudo-elements for data labels on mobile */
+  table.table tbody td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    width: calc(50% - 20px); /* Adjust width for label */
+    padding-right: 10px;
+    text-align: left;
+    font-weight: bold;
+    color: #495057;
+  }
+
+  /* Special handling for action buttons in the mobile table view if it were used */
+  table.table tbody td[data-label="Actions"] {
+    text-align: left !important; /* Override right-align for action buttons */
+    padding-left: 10px; /* Reset padding for action column */
+  }
+}
 </style>

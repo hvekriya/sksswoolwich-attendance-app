@@ -1,6 +1,6 @@
 <template>
   <div class="container mt-4">
-    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4"> 
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4">
       <h2 class="mb-2 mb-md-0">Manage Teachers</h2>
       <button class="btn btn-primary" @click="openAddTeacherModal">
         <i class="bi bi-person-plus-fill me-2"></i>Add New Teacher
@@ -22,7 +22,7 @@
       No teachers found. Click "Add New Teacher" to get started.
     </div>
 
-    <div v-if="!loading && teachers.length > 0" class="table-responsive">
+    <div v-if="!loading && teachers.length > 0" class="d-none d-md-block table-responsive">
       <table class="table table-hover table-striped align-middle">
         <thead class="table-dark">
           <tr>
@@ -48,6 +48,28 @@
           </tr>
         </tbody>
       </table>
+    </div>
+
+    <div v-if="!loading && teachers.length > 0" class="d-md-none mt-3">
+      <div v-for="teacher in teachers" :key="teacher.id" class="card mb-3 shadow-sm teacher-card-mobile">
+        <div class="card-body">
+          <h5 class="card-title text-primary">{{ teacher.name }}</h5>
+          <p class="card-text mb-1">
+            <strong>Email:</strong> {{ teacher.email }}
+          </p>
+          <p class="card-text mb-3">
+            <strong>Assigned Class:</strong> {{ teacher.className || 'N/A' }}
+          </p>
+          <div class="d-flex flex-wrap gap-2">
+            <button class="btn btn-sm btn-info" @click="openEditTeacherModal(teacher)">
+              <i class="bi bi-pencil-fill me-1"></i> Edit
+            </button>
+            <button class="btn btn-sm btn-danger" @click="deleteTeacher(teacher.id)">
+              <i class="bi bi-trash-fill me-1"></i> Delete
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <AddEditTeacherModal
@@ -183,5 +205,67 @@ const deleteTeacher = async (teacherIdToDelete) => {
 </script>
 
 <style lang="scss" scoped>
-@import '../../assets/responsive_table';
+/* Common styles for both desktop table & mobile cards for consistent action button spacing */
+.d-flex.flex-wrap.gap-2 {
+  gap: 0.5rem; /* Standard Bootstrap gap for spacing buttons */
+}
+
+/* Specific styles for the mobile card view */
+.teacher-card-mobile {
+  border: 1px solid #e0e0e0;
+}
+
+.teacher-card-mobile .card-title {
+  font-size: 1.25rem;
+  margin-bottom: 0.75rem;
+}
+
+.teacher-card-mobile .card-text strong {
+  display: inline-block;
+  min-width: 120px; /* Adjust as needed for alignment of labels */
+}
+
+/* Responsive Table Styling (for Mobile: hiding table headers, showing data labels) */
+@media (max-width: 767.98px) {
+  /* Hide table headers on small screens */
+  table.table thead {
+    display: none;
+  }
+
+  /* Make table rows behave like blocks */
+  table.table tbody tr {
+    display: block;
+    margin-bottom: 1rem;
+    border: 1px solid #dee2e6;
+    border-radius: 0.25rem;
+    box-shadow: 0 0.125rem 0.25rem rgba(0, 0, 0, 0.075);
+  }
+
+  /* Make table data cells behave like blocks */
+  table.table tbody td {
+    display: block;
+    text-align: right !important;
+    padding-left: 50%; /* Make space for the data label */
+    position: relative;
+    border: none; /* Remove cell borders within the "card" */
+  }
+
+  /* Use pseudo-elements for data labels on mobile */
+  table.table tbody td::before {
+    content: attr(data-label);
+    position: absolute;
+    left: 10px;
+    width: calc(50% - 20px); /* Adjust width for label */
+    padding-right: 10px;
+    text-align: left;
+    font-weight: bold;
+    color: #495057;
+  }
+
+  /* Special handling for action buttons in the mobile table view if it were used */
+  table.table tbody td[data-label="Actions"] {
+    text-align: left !important; /* Override right-align for action buttons */
+    padding-left: 10px; /* Reset padding for action column */
+  }
+}
 </style>
