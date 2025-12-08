@@ -15,6 +15,9 @@
             <select v-model="selectedDateTimestamp" class="form-select" @change="fetchAttendance">
               <option v-for="saturday in pastSaturdays" :key="saturday.timestamp.toMillis()" :value="saturday.timestamp.toMillis()">
                 {{ saturday.displayDate }}
+                <template v-if="isClient && todayForClientCheck && isSameDay(saturday.timestamp, todayForClientCheck)">
+                  (Today)
+                </template>
               </option>
             </select>
             <small class="form-text text-muted">Attendance is recorded for Saturdays only.</small>
@@ -104,18 +107,20 @@ const teacherId = ref(null);
 const classId = ref(null);
 const className = ref('Loading...');
 const students = ref([]);
-const attendanceStatus = ref({}); // { studentId: boolean }
-const selectedDateTimestamp = ref(null); // Unix timestamp for the selected Saturday
+const attendanceStatus = reactive({});
+const selectedDateTimestamp = ref(null);
 const pastSaturdays = ref([]);
 const loadingStudents = ref(true);
 const loadingAttendance = ref(false);
-const loading = ref(false); // For save button
+const loading = ref(false);
 const saveMessage = ref(null);
 const saveMessageType = ref(null);
 
 const presentCount = ref(0);
 const absentCount = ref(0);
-const attendanceRecorded = ref(true); // New ref: Assume true until proven false
+const attendanceRecorded = ref(true);
+
+const isClient = import.meta.client;
 
 // Computed property to convert selectedDateTimestamp to a Firebase Timestamp object
 const selectedDate = computed(() => {
@@ -127,10 +132,8 @@ const selectedDateDisplay = computed(() => {
   return selectedDateTimestamp.value ? format(new Date(selectedDateTimestamp.value), 'MMMM dd,yyyy') : '';
 });
 
-
 // Watch for changes in attendanceStatus and update counts
-// Use a deep watcher on attendanceStatus object
-watch(attendanceStatus.value, () => {
+watch(attendanceStatus, () => {
   updateAttendanceCounts();
 }, { deep: true });
 
@@ -141,28 +144,26 @@ const addStudent = () => {
 const generateSaturdays = () => {
   const today = new Date();
   let currentSaturday = new Date(today);
-  // Ensure currentSaturday is actually a Saturday, if today is one. Otherwise, find the most recent past Saturday.
+
+  // Adjust to the most recent past or current Saturday
   if (!isSaturday(currentSaturday)) {
-    // If today is not Saturday, go back to the previous Saturday.
-    // startOfWeek with weekStartsOn: 0 gives Sunday. Add 6 days to get Saturday.
-    currentSaturday = addDays(startOfWeek(today, { weekStartsOn: 0 }), 6);
-    // If the calculated Saturday is in the future, go back a week.
-    if (currentSaturday > today) {
-      currentSaturday = subWeeks(currentSaturday, 1);
-    }
+    const dayOfWeek = currentSaturday.getDay();
+    const daysSinceLastSaturday = (dayOfWeek + 1) % 7;
+    currentSaturday = new Date(currentSaturday.setDate(currentSaturday.getDate() - daysSinceLastSaturday));
   }
 
   const saturdays = [];
-  // Generate past 8 Saturdays + current Saturday if it's a Saturday
   for (let i = 0; i < 9; i++) {
     const date = subWeeks(currentSaturday, i);
+    // Normalize to midnight
+    date.setHours(0, 0, 0, 0);
     saturdays.push({
       timestamp: Timestamp.fromDate(date),
-      displayDate: format(date, 'MMMM dd,yyyy') + (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd') && isSaturday(today) ? ' (Today)' : '')
+      displayDate: format(date, 'MMMM dd,yyyy')
     });
   }
-  pastSaturdays.value = saturdays.reverse(); // Show oldest first
-  selectedDateTimestamp.value = pastSaturdays.value[pastSaturdays.value.length - 1]?.timestamp.toMillis(); // Default to most recent Saturday
+  pastSaturdays.value = saturdays.reverse();
+  selectedDateTimestamp.value = pastSaturdays.value[pastSaturdays.value.length - 1]?.timestamp.toMillis();
 };
 
 const fetchStudents = async () => {
@@ -176,64 +177,67 @@ const fetchStudents = async () => {
   try {
     const q = query(collection(db, 'students'), where('classId', '==', classId.value));
     const querySnapshot = await getDocs(q);
-    // Sort students by name A-Z
     students.value = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }))
                                      .sort((a, b) => a.name.localeCompare(b.name));
 
     // Initialize attendance status for all students as absent by default
     students.value.forEach(student => {
-      attendanceStatus.value[student.id] = false;
+      attendanceStatus[student.id] = false;
     });
 
-    // Manually trigger count update after students are loaded and attendanceStatus initialized
-    updateAttendanceCounts(); // Initial count assuming all absent
+    updateAttendanceCounts();
   } catch (error) {
     console.error('Error fetching students:', error);
-    // You might want to use a global notification system here
   } finally {
     loadingStudents.value = false;
   }
 };
 
 const fetchAttendance = async () => {
-  if (!selectedDate.value || !classId.value || loadingStudents.value) return;
+  if (!selectedDate.value || !classId.value || students.value.length === 0) {
+    return;
+  }
 
   loadingAttendance.value = true;
   saveMessage.value = null;
-  attendanceRecorded.value = true; // Reset to true at the start of fetchAttendance
+  attendanceRecorded.value = true;
 
-  // Reset attendance status to default (absent) for all *currently loaded* students before fetching
+  // Reset attendance status to default (absent) for all students before fetching
   students.value.forEach(student => {
-    attendanceStatus.value[student.id] = false;
+    attendanceStatus[student.id] = false;
   });
 
   try {
+    // Create date range for the entire day (midnight to just before next midnight)
+    const startOfDay = new Date(selectedDate.value.toDate());
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(selectedDate.value.toDate());
+    endOfDay.setHours(23, 59, 59, 999);
+    
     const q = query(
       collection(db, 'attendance'),
       where('classId', '==', classId.value),
-      where('date', '==', selectedDate.value)
+      where('date', '>=', Timestamp.fromDate(startOfDay)),
+      where('date', '<=', Timestamp.fromDate(endOfDay))
     );
     const querySnapshot = await getDocs(q);
 
-    // Check if any attendance records were found for the selected date
     if (querySnapshot.empty) {
-      attendanceRecorded.value = false; // No records found, so attendance is not recorded
+      attendanceRecorded.value = false;
     } else {
       querySnapshot.forEach(doc => {
         const data = doc.data();
         if (students.value.some(s => s.id === data.studentId)) {
-          attendanceStatus.value[data.studentId] = data.present;
+          attendanceStatus[data.studentId] = data.present;
         }
       });
-      attendanceRecorded.value = true; // Records were found
+      attendanceRecorded.value = true;
     }
 
-    // Manually trigger count update after attendance is fetched (or determined empty)
     updateAttendanceCounts();
 
   } catch (error) {
     console.error('Error fetching attendance:', error);
-    // You might want to use a global notification system here
   } finally {
     loadingAttendance.value = false;
   }
@@ -251,45 +255,61 @@ const saveAttendance = async () => {
   }
 
   try {
+    // Normalize the date to midnight (start of day) for consistency
+    const dateAtMidnight = new Date(selectedDate.value.toDate());
+    dateAtMidnight.setHours(0, 0, 0, 0);
+    const normalizedDate = Timestamp.fromDate(dateAtMidnight);
+    
     for (const student of students.value) {
-      const isPresent = attendanceStatus.value[student.id];
-      const attendanceDocId = `${classId.value}_${selectedDate.value.toDate().toISOString().split('T')[0]}_${student.id}`;
+      const isPresent = attendanceStatus[student.id];
+      const attendanceDocId = `${classId.value}_${dateAtMidnight.toISOString().split('T')[0]}_${student.id}`;
       const attendanceRef = doc(db, 'attendance', attendanceDocId);
 
       await setDoc(attendanceRef, {
         classId: classId.value,
         studentId: student.id,
-        date: selectedDate.value,
+        date: normalizedDate,
         present: isPresent,
         recordedBy: teacherId.value,
         recordedAt: Timestamp.now(),
-      }, { merge: true }); // Use merge to update existing or create new
+      }, { merge: true });
     }
     saveMessage.value = 'Attendance saved successfully!';
     saveMessageType.value = 'success';
-    attendanceRecorded.value = true; // Mark as recorded after saving
+    attendanceRecorded.value = true;
   } catch (error) {
     console.error('Error saving attendance:', error);
     saveMessage.value = 'Failed to save attendance. Please try again.';
     saveMessageType.value = 'danger';
   } finally {
     loading.value = false;
-    setTimeout(() => saveMessage.value = null, 3000); // Clear message after 3 seconds
+    setTimeout(() => saveMessage.value = null, 3000);
   }
 };
 
 // Helper function to update present/absent counts
 const updateAttendanceCounts = () => {
   let currentPresent = 0;
-  students.value.forEach(student => {
-    if (attendanceStatus.value[student.id] === true) {
-      currentPresent++;
-    }
-  });
+  if (students.value.length > 0) {
+    students.value.forEach(student => {
+      if (attendanceStatus[student.id] === true) {
+        currentPresent++;
+      }
+    });
+  }
   presentCount.value = currentPresent;
-  absentCount.value = students.value.length - currentPresent; // Calculate absent based on total students
+  absentCount.value = students.value.length - currentPresent;
 };
 
+const isSameDay = (firestoreTimestamp1, date2) => {
+  if (!firestoreTimestamp1 || !date2) return false;
+  const date1 = firestoreTimestamp1.toDate();
+  return date1.getFullYear() === date2.getFullYear() &&
+         date1.getMonth() === date2.getMonth() &&
+         date1.getDate() === date2.getDate();
+};
+
+const todayForClientCheck = ref(null);
 
 onMounted(async () => {
   const user = await new Promise(resolve => {
@@ -314,11 +334,9 @@ onMounted(async () => {
             className.value = 'Class not found';
             console.warn(`Class with ID ${classId.value} not found.`);
           }
+          todayForClientCheck.value = new Date();
           generateSaturdays();
-          // *** IMPORTANT CHANGE HERE ***
-          // Fetch students first
           await fetchStudents();
-          // THEN, and only then, fetch attendance for the selected date
           if (selectedDate.value) {
             await fetchAttendance();
           }
@@ -326,21 +344,19 @@ onMounted(async () => {
           console.warn('Teacher is not assigned to a class.');
           className.value = 'No Class Assigned';
           loadingStudents.value = false;
-          attendanceRecorded.value = true; // No class, so no attendance to record state
+          attendanceRecorded.value = true;
         }
       } else {
-        // If not a teacher or user data missing, redirect or show error
         router.push('/');
       }
     } catch (error) {
       console.error('Error fetching teacher data or class:', error);
       loadingStudents.value = false;
-      attendanceRecorded.value = true; // Error, so no attendance state to show banner
+      attendanceRecorded.value = true;
     }
   } else {
-    // User not logged in, auth middleware should handle redirect
     loadingStudents.value = false;
-    attendanceRecorded.value = true; // Not logged in, no attendance state
+    attendanceRecorded.value = true;
   }
 });
 </script>

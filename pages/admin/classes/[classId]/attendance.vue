@@ -18,6 +18,9 @@
             <select v-model="selectedDateTimestamp" class="form-select" @change="fetchAttendance">
               <option v-for="saturday in pastSaturdays" :key="saturday.timestamp.toMillis()" :value="saturday.timestamp.toMillis()">
                 {{ saturday.displayDate }}
+                <template v-if="isClient && todayForClientCheck && isSameDay(saturday.timestamp, todayForClientCheck)">
+                  (Today)
+                </template>
               </option>
             </select>
             <small class="form-text text-muted">Attendance is recorded for Saturdays only.</small>
@@ -86,14 +89,14 @@
 </template>
 
 <script setup>
-import { ref, onMounted, computed, watch } from 'vue'; // Import 'watch'
+import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs, setDoc, Timestamp } from 'firebase/firestore';
 import { format, subWeeks, startOfWeek, isSaturday, addDays } from 'date-fns';
 
 definePageMeta({
-  middleware: ['auth', 'admin'],
+  middleware: ['auth', 'admin']
 });
 
 const nuxtApp = useNuxtApp();
@@ -107,7 +110,7 @@ const currentClassId = ref(route.params.classId);
 const className = ref('Loading class...');
 
 const students = ref([]);
-const attendanceStatus = ref({});
+const attendanceStatus = reactive({});
 const selectedDateTimestamp = ref(null);
 const pastSaturdays = ref([]);
 const loadingStudents = ref(true);
@@ -115,6 +118,8 @@ const loadingAttendance = ref(false);
 const loading = ref(false);
 const saveMessage = ref(null);
 const saveMessageType = ref(null);
+
+const isClient = import.meta.client;
 
 // New refs for attendance counts
 const presentCount = ref(0);
@@ -125,9 +130,9 @@ const selectedDate = computed(() => {
 });
 
 // Watch for changes in attendanceStatus and update counts
-watch(attendanceStatus.value, () => {
+watch(attendanceStatus, () => {
   updateAttendanceCounts();
-}, { deep: true }); // Use deep: true to watch for changes inside the attendanceStatus object
+}, { deep: true });
 
 // --- Data Fetching Functions ---
 const fetchClassName = async (classIdToFetch) => {
@@ -166,7 +171,7 @@ const fetchStudents = async () => {
 
     // Initialize attendance status for all students as absent by default
     students.value.forEach(student => {
-      attendanceStatus.value[student.id] = false;
+      attendanceStatus[student.id] = false;
     });
 
     // Manually trigger count update after students are loaded and attendanceStatus initialized
@@ -182,28 +187,38 @@ const fetchStudents = async () => {
 };
 
 const fetchAttendance = async () => {
-  if (!selectedDate.value || !currentClassId.value || loadingStudents.value) return;
+  if (!selectedDate.value || !currentClassId.value || students.value.length === 0) {
+    return;
+  }
 
   loadingAttendance.value = true;
   saveMessage.value = null;
 
   // Reset attendance status to default (absent) for all *currently loaded* students before fetching
   students.value.forEach(student => {
-    attendanceStatus.value[student.id] = false;
+    attendanceStatus[student.id] = false;
   });
 
   try {
+    // Create date range for the entire day (midnight to just before next midnight)
+    const startOfDay = new Date(selectedDate.value.toDate());
+    startOfDay.setHours(0, 0, 0, 0);
+    const endOfDay = new Date(selectedDate.value.toDate());
+    endOfDay.setHours(23, 59, 59, 999);
+    
     const q = query(
       collection(db, 'attendance'),
       where('classId', '==', currentClassId.value),
-      where('date', '==', selectedDate.value)
+      where('date', '>=', Timestamp.fromDate(startOfDay)),
+      where('date', '<=', Timestamp.fromDate(endOfDay))
     );
     const querySnapshot = await getDocs(q);
+    
     querySnapshot.forEach(doc => {
       const data = doc.data();
       // Ensure student exists in the current 'students' array before updating status
       if (students.value.some(s => s.id === data.studentId)) {
-        attendanceStatus.value[data.studentId] = data.present;
+        attendanceStatus[data.studentId] = data.present;
       }
     });
 
@@ -233,27 +248,27 @@ const goBackToClasses = () => {
 const generateSaturdays = () => {
   const today = new Date();
   let currentSaturday = new Date(today);
+
+  // Adjust to the most recent past or current Saturday
   if (!isSaturday(currentSaturday)) {
-    // If today is not Saturday, find the previous Saturday
-    currentSaturday = subWeeks(startOfWeek(today, { weekStartsOn: 0 }), 0); // This gets the Sunday of current week
-    if (!isSaturday(currentSaturday)) {
-      currentSaturday = addDays(currentSaturday, (6 - currentSaturday.getDay() + 7) % 7); // Find next Saturday from Sunday
-    }
-    currentSaturday = subWeeks(currentSaturday, 1); // Go back one week to get the previous Saturday if today isn't one
+    const dayOfWeek = currentSaturday.getDay(); // 0 for Sunday, 6 for Saturday
+    const daysSinceLastSaturday = (dayOfWeek + 1) % 7; // Number of days to subtract to get to last Saturday
+    currentSaturday = new Date(currentSaturday.setDate(currentSaturday.getDate() - daysSinceLastSaturday));
   }
 
   const saturdays = [];
   for (let i = 0; i < 9; i++) { // Generate current + 8 past Saturdays
     const date = subWeeks(currentSaturday, i);
+    // Normalize to midnight
+    date.setHours(0, 0, 0, 0);
     saturdays.push({
       timestamp: Timestamp.fromDate(date),
-      displayDate: format(date, 'MMMM dd,yyyy') + (format(date, 'yyyy-MM-dd') === format(today, 'yyyy-MM-dd') && isSaturday(today) ? ' (Today)' : '')
+      displayDate: format(date, 'MMMM dd,yyyy')
     });
   }
   pastSaturdays.value = saturdays.reverse(); // Show oldest first
   selectedDateTimestamp.value = pastSaturdays.value[pastSaturdays.value.length - 1]?.timestamp.toMillis(); // Default to most recent Saturday
 };
-
 
 const saveAttendance = async () => {
   loading.value = true;
@@ -273,15 +288,20 @@ const saveAttendance = async () => {
   }
 
   try {
+    // Normalize the date to midnight (start of day) for consistency
+    const dateAtMidnight = new Date(selectedDate.value.toDate());
+    dateAtMidnight.setHours(0, 0, 0, 0);
+    const normalizedDate = Timestamp.fromDate(dateAtMidnight);
+    
     for (const student of students.value) {
-      const isPresent = attendanceStatus.value[student.id];
-      const attendanceDocId = `${currentClassId.value}_${selectedDate.value.toDate().toISOString().split('T')[0]}_${student.id}`;
+      const isPresent = attendanceStatus[student.id];
+      const attendanceDocId = `${currentClassId.value}_${dateAtMidnight.toISOString().split('T')[0]}_${student.id}`;
       const attendanceRef = doc(db, 'attendance', attendanceDocId);
 
       await setDoc(attendanceRef, {
         classId: currentClassId.value,
         studentId: student.id,
-        date: selectedDate.value,
+        date: normalizedDate, // Use normalized date at midnight
         present: isPresent,
         recordedBy: currentUserId.value,
         recordedAt: Timestamp.now(),
@@ -308,7 +328,7 @@ const updateAttendanceCounts = () => {
     students.value.forEach(student => {
       // Check if the student's status is explicitly true (present)
       // Otherwise, consider them absent (false, undefined, or null)
-      if (attendanceStatus.value[student.id] === true) {
+      if (attendanceStatus[student.id] === true) {
         currentPresent++;
       } else {
         currentAbsent++;
@@ -319,26 +339,44 @@ const updateAttendanceCounts = () => {
   absentCount.value = currentAbsent;
 };
 
-
 // --- Watcher for currentClassId ---
 watch(currentClassId, async (newClassId) => {
   if (newClassId) {
     loadingStudents.value = true;
     await fetchClassName(newClassId);
     await fetchStudents(); // This will also call updateAttendanceCounts
-    if (selectedDate.value) {
-      await fetchAttendance(); // This will also call updateAttendanceCounts
+    // After students are loaded, fetch attendance if date is already selected
+    if (selectedDateTimestamp.value) {
+      await fetchAttendance();
     }
   } else {
     className.value = 'No Class Selected';
     students.value = [];
-    attendanceStatus.value = {};
+    Object.keys(attendanceStatus).forEach(key => delete attendanceStatus[key]);
     loadingStudents.value = false;
     saveMessage.value = 'Invalid class ID provided in URL.';
     saveMessageType.value = 'danger';
     updateAttendanceCounts(); // Update counts even if no class is selected
   }
 }, { immediate: true });
+
+// --- Watcher for selectedDateTimestamp ---
+watch(selectedDateTimestamp, async (newDateTimestamp) => {
+  if (newDateTimestamp && currentClassId.value && students.value.length > 0) {
+    await fetchAttendance();
+  }
+});
+
+// In script setup, add this helper function
+const isSameDay = (firestoreTimestamp1, date2) => {
+  if (!firestoreTimestamp1 || !date2) return false;
+  const date1 = firestoreTimestamp1.toDate();
+  return date1.getFullYear() === date2.getFullYear() &&
+         date1.getMonth() === date2.getMonth() &&
+         date1.getDate() === date2.getDate();
+};
+
+const todayForClientCheck = ref(null); // Declare a ref to hold today's date
 
 // --- Lifecycle Hooks ---
 onMounted(async () => {
@@ -360,11 +398,21 @@ onMounted(async () => {
     saveMessage.value = 'No class ID provided in the URL. Please navigate from the Manage Classes page.';
     saveMessageType.value = 'danger';
     loadingStudents.value = false;
-    updateAttendanceCounts(); // Update counts if no class ID is present
+    updateAttendanceCounts();
     return;
   }
 
+  todayForClientCheck.value = new Date();
   generateSaturdays();
+  
+  await nextTick();
+  
+  // Give the watchers time to complete
+  setTimeout(async () => {
+    if (currentClassId.value && selectedDateTimestamp.value && students.value.length > 0) {
+      await fetchAttendance();
+    }
+  }, 500);
 });
 </script>
 
