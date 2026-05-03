@@ -1,5 +1,5 @@
 <template>
-  <nav class="navbar navbar-expand-lg navbar-dark bg-primary fixed-top shadow-sm">
+  <nav class="navbar navbar-expand-lg navbar-dark navbar-glass-primary fixed-top">
     <div class="container">
       <NuxtLink class="navbar-brand" to="/">
             <img src="/calendar-app-icon-white.png" alt="Calendar App Icon" style="width: 20px;">
@@ -27,6 +27,15 @@
           </li>
           <li class="nav-item" v-if="userRole === 'teacher'">
             <NuxtLink class="nav-link" to="/teacher/add-student">Add Student</NuxtLink>
+          </li>
+          <li class="nav-item" v-if="userRole === 'admin'">
+            <NuxtLink class="nav-link" to="/admin">Admin</NuxtLink>
+          </li>
+          <li class="nav-item" v-if="userRole === 'admin'">
+            <NuxtLink class="nav-link" to="/admin/leaderboard">Leaderboard</NuxtLink>
+          </li>
+          <li class="nav-item" v-if="userRole === 'admin'">
+            <NuxtLink class="nav-link" to="/admin/student-attendance">By student</NuxtLink>
           </li>
         </ul>
 
@@ -122,4 +131,5 @@ const handleLogout = async () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
 </style>

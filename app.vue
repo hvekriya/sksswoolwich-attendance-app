@@ -1,8 +1,8 @@
 <!-- app.vue -->
 <template>
-  <div>
+  <div class="app-shell">
     <Navbar />
-    <main class="py-4">
+    <main class="py-4 px-2 px-sm-3">
       <NuxtPage /> <!-- This is where your page content is rendered -->
     </main>
     <!-- Optional: Add a global notification component here if you implement one later -->

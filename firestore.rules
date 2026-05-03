@@ -89,5 +89,15 @@ service cloud.firestore {
                        isAssignedToClass(request.resource.data.classId) &&
                        request.auth.uid == request.resource.data.recordedBy);
     }
+
+    // Marks a class date as "no session" (holiday / no class). Teachers assigned to the class or admins may write.
+    match /class_attendance_skips/{skipId} {
+      allow read: if isAdmin() || (isAuthenticated() && resource.data.classId is string && isAssignedToClass(resource.data.classId));
+      allow write: if isAdmin() ||
+                      (isAuthenticated() &&
+                       request.resource.data.classId is string &&
+                       isAssignedToClass(request.resource.data.classId) &&
+                       request.auth.uid == request.resource.data.recordedBy);
+    }
   }
 }

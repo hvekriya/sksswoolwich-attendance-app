@@ -1,18 +1,18 @@
 <template>
-  <div class="container mt-4">
-    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4">
-      <h2 class="mb-md-0 mb-3">My Class: <span class="text-primary">{{ className }}</span></h2>
-      <button class="btn btn-success" @click="addStudent">
+  <div class="container mt-4 pb-5">
+    <div class="d-flex flex-column flex-md-row justify-content-md-between align-items-md-center mb-4 gap-3">
+      <h2 class="mb-md-0 mb-2">My Class: <span class="text-primary">{{ className }}</span></h2>
+      <button class="btn btn-success btn-lg rounded-pill px-4" @click="addStudent">
         <i class="bi bi-plus-circle me-2"></i>Add Student
       </button>
     </div>
 
-    <div class="card shadow-sm mb-4">
+    <div class="card glass-card shadow-sm mb-4">
       <div class="card-body">
         <h5 class="card-title">Select Attendance Date</h5>
         <div class="row align-items-center">
           <div class="col-md-6 mb-3 mb-md-0">
-            <select v-model="selectedDateTimestamp" class="form-select" @change="fetchAttendance">
+            <select v-model="selectedDateTimestamp" class="form-select form-select-lg" @change="fetchAttendance">
               <option v-for="saturday in pastSaturdays" :key="saturday.timestamp.toMillis()" :value="saturday.timestamp.toMillis()">
                 {{ saturday.displayDate }}
                 <template v-if="isClient && todayForClientCheck && isSameDay(saturday.timestamp, todayForClientCheck)">
@@ -29,6 +29,33 @@
             </p>
           </div>
         </div>
+
+        <div class="mt-4 p-3 rounded-3 bg-light border">
+          <div class="form-check form-switch mb-2">
+            <input
+              id="sessionNoClass"
+              v-model="sessionNoClass"
+              class="form-check-input"
+              type="checkbox"
+              role="switch"
+              @change="onSessionNoClassToggle"
+            />
+            <label class="form-check-label" for="sessionNoClass">
+              No class or class had a holiday (no attendance to record for this date)
+            </label>
+          </div>
+          <div v-if="sessionNoClass" class="row g-2 align-items-center">
+            <div class="col-12 col-sm-auto">
+              <label class="form-label mb-0 small text-muted" for="skipReason">Reason</label>
+            </div>
+            <div class="col-12 col-sm-6 col-md-4">
+              <select id="skipReason" v-model="skipReasonChoice" class="form-select form-select-sm">
+                <option value="holiday">Holiday / centre closed</option>
+                <option value="no_class">No class scheduled</option>
+              </select>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -43,12 +70,16 @@
       No students found in your class. <NuxtLink to="/teacher/add-student" class="alert-link">Add a student</NuxtLink> to get started.
     </div>
 
-    <div v-if="!loadingStudents && students.length > 0 && !attendanceRecorded" class="alert alert-warning text-center mt-3" role="alert">
-      <i class="bi bi-exclamation-triangle-fill me-2"></i>Attendance has not been recorded for **{{ selectedDateDisplay }}**. Please mark students present or absent and click "Save Attendance".
+    <div v-if="!loadingStudents && students.length > 0 && !attendanceRecorded && !sessionNoClass" class="alert alert-warning text-center mt-3 border-0 shadow-sm" role="alert">
+      <i class="bi bi-exclamation-triangle-fill me-2"></i>Attendance has not been recorded for <strong>{{ selectedDateDisplay }}</strong>. Please mark students present or absent and click "Save Attendance", or mark "No class / holiday".
     </div>
 
-    <div v-if="!loadingStudents && students.length > 0" class="table-responsive">
-      <table class="table table-hover table-striped align-middle">
+    <div v-if="!loadingStudents && students.length > 0 && sessionNoClass" class="alert alert-info text-center mt-3 border-0 shadow-sm" role="alert">
+      <i class="bi bi-calendar-x me-2"></i>This date is marked as <strong>no session</strong>. Save to confirm; student marks are not used for this date.
+    </div>
+
+    <div v-if="!loadingStudents && students.length > 0 && !sessionNoClass" class="table-responsive card glass-card p-2 p-md-3">
+      <table class="table table-hover table-striped align-middle table-glass mb-0">
         <thead class="table-dark">
           <tr>
             <th>Student Name</th>
@@ -76,7 +107,11 @@
         </tbody>
       </table>
     </div>
-    <button class="btn btn-primary" @click="saveAttendance" :disabled="loading || !students.length">
+    <button
+      class="btn btn-primary btn-lg rounded-pill mt-3 px-4"
+      @click="saveAttendance"
+      :disabled="loading || !students.length"
+    >
       <span v-if="loading" class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
       <span v-else>Save Attendance</span>
     </button>
@@ -90,7 +125,14 @@
 import { ref, onMounted, computed, watch } from 'vue';
 import { onAuthStateChanged } from 'firebase/auth';
 import { doc, getDoc, collection, query, where, getDocs, setDoc, Timestamp } from 'firebase/firestore';
-import { format, subWeeks, startOfWeek, isSaturday, addDays } from 'date-fns';
+import { format, subWeeks, isSaturday } from 'date-fns';
+import {
+  fetchSkipForClassDay,
+  dateKeyFromDate,
+  deleteAttendanceDocsForClassDay,
+  setSkipForClassDay,
+  deleteSkipForClassDay,
+} from '~/utils/classAttendanceSkips';
 
 // Page-specific middleware
 definePageMeta({
@@ -119,6 +161,8 @@ const saveMessageType = ref(null);
 const presentCount = ref(0);
 const absentCount = ref(0);
 const attendanceRecorded = ref(true);
+const sessionNoClass = ref(false);
+const skipReasonChoice = ref('holiday');
 
 const isClient = import.meta.client;
 
@@ -137,8 +181,18 @@ watch(attendanceStatus, () => {
   updateAttendanceCounts();
 }, { deep: true });
 
+watch(sessionNoClass, () => {
+  updateAttendanceCounts();
+});
+
 const addStudent = () => {
   router.push('/teacher/add-student');
+};
+
+const onSessionNoClassToggle = async () => {
+  if (!sessionNoClass.value && selectedDate.value && classId.value && students.value.length > 0) {
+    await fetchAttendance();
+  }
 };
 
 const generateSaturdays = () => {
@@ -202,18 +256,31 @@ const fetchAttendance = async () => {
   saveMessage.value = null;
   attendanceRecorded.value = true;
 
+  const dayMidnight = new Date(selectedDate.value.toDate());
+  dayMidnight.setHours(0, 0, 0, 0);
+
   // Reset attendance status to default (absent) for all students before fetching
   students.value.forEach(student => {
     attendanceStatus[student.id] = false;
   });
 
   try {
-    // Create date range for the entire day (midnight to just before next midnight)
+    const skip = await fetchSkipForClassDay(db, classId.value, dayMidnight);
+    if (skip) {
+      sessionNoClass.value = true;
+      skipReasonChoice.value = skip.skipReason === 'no_class' ? 'no_class' : 'holiday';
+      attendanceRecorded.value = true;
+      updateAttendanceCounts();
+      return;
+    }
+
+    sessionNoClass.value = false;
+
     const startOfDay = new Date(selectedDate.value.toDate());
     startOfDay.setHours(0, 0, 0, 0);
     const endOfDay = new Date(selectedDate.value.toDate());
     endOfDay.setHours(23, 59, 59, 999);
-    
+
     const q = query(
       collection(db, 'attendance'),
       where('classId', '==', classId.value),
@@ -225,8 +292,8 @@ const fetchAttendance = async () => {
     if (querySnapshot.empty) {
       attendanceRecorded.value = false;
     } else {
-      querySnapshot.forEach(doc => {
-        const data = doc.data();
+      querySnapshot.forEach(docSnap => {
+        const data = docSnap.data();
         if (students.value.some(s => s.id === data.studentId)) {
           attendanceStatus[data.studentId] = data.present;
         }
@@ -235,7 +302,6 @@ const fetchAttendance = async () => {
     }
 
     updateAttendanceCounts();
-
   } catch (error) {
     console.error('Error fetching attendance:', error);
   } finally {
@@ -254,12 +320,33 @@ const saveAttendance = async () => {
     return;
   }
 
+  const dateAtMidnight = new Date(selectedDate.value.toDate());
+  dateAtMidnight.setHours(0, 0, 0, 0);
+  const dateKey = dateKeyFromDate(dateAtMidnight);
+  const normalizedDate = Timestamp.fromDate(dateAtMidnight);
+  const startOfDay = new Date(dateAtMidnight);
+  const endOfDay = new Date(dateAtMidnight);
+  endOfDay.setHours(23, 59, 59, 999);
+
   try {
-    // Normalize the date to midnight (start of day) for consistency
-    const dateAtMidnight = new Date(selectedDate.value.toDate());
-    dateAtMidnight.setHours(0, 0, 0, 0);
-    const normalizedDate = Timestamp.fromDate(dateAtMidnight);
-    
+    if (sessionNoClass.value) {
+      await deleteAttendanceDocsForClassDay(db, classId.value, startOfDay, endOfDay);
+      await setSkipForClassDay(
+        db,
+        classId.value,
+        dateKey,
+        normalizedDate,
+        skipReasonChoice.value,
+        teacherId.value
+      );
+      saveMessage.value = 'Saved: no session for this date.';
+      saveMessageType.value = 'success';
+      attendanceRecorded.value = true;
+      return;
+    }
+
+    await deleteSkipForClassDay(db, classId.value, dateKey);
+
     for (const student of students.value) {
       const isPresent = attendanceStatus[student.id];
       const attendanceDocId = `${classId.value}_${dateAtMidnight.toISOString().split('T')[0]}_${student.id}`;
@@ -289,6 +376,11 @@ const saveAttendance = async () => {
 
 // Helper function to update present/absent counts
 const updateAttendanceCounts = () => {
+  if (sessionNoClass.value) {
+    presentCount.value = 0;
+    absentCount.value = 0;
+    return;
+  }
   let currentPresent = 0;
   if (students.value.length > 0) {
     students.value.forEach(student => {
