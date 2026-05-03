@@ -27,8 +27,7 @@
             <tr>
               <th>Class Name</th>
               <th>Assigned Teachers</th>
-              <th>Created By</th>
-              <th>Created At</th>
+              <th>Last recorded attendance</th>
               <th>Actions</th>
             </tr>
           </thead>
@@ -41,8 +40,17 @@
                 </span>
                 <span v-else class="text-muted">No teachers assigned</span>
               </td>
-              <td data-label="Created by">{{ cls.createdByUserEmail || 'N/A' }}</td>
-              <td data-label="Created on">{{ formatDate(cls.createdAt) }}</td>
+              <td data-label="Last attendance">
+                <span class="text-nowrap">
+                  <i
+                    v-if="isMissingLastSession(cls.lastRecordedAttendance)"
+                    class="bi bi-exclamation-triangle-fill text-warning me-1"
+                    title="No attendance recorded for the latest Saturday session"
+                    aria-hidden="true"
+                  />
+                  {{ formatLastRecordedAttendance(cls.lastRecordedAttendance) }}
+                </span>
+              </td>
               <td data-label="Actions">
                 <div class="d-flex flex-wrap gap-2">
                   <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
@@ -72,11 +80,17 @@
               </span>
               <span v-else class="text-muted">No teachers assigned</span>
             </p>
-            <p class="card-text mb-1">
-              <strong>Created By:</strong> {{ cls.createdByUserEmail || 'N/A' }}
-            </p>
             <p class="card-text mb-3">
-              <strong>Created At:</strong> {{ formatDate(cls.createdAt) }}
+              <strong>Last recorded attendance:</strong>
+              <span class="text-nowrap">
+                <i
+                  v-if="isMissingLastSession(cls.lastRecordedAttendance)"
+                  class="bi bi-exclamation-triangle-fill text-warning me-1"
+                  title="No attendance recorded for the latest Saturday session"
+                  aria-hidden="true"
+                />
+                {{ formatLastRecordedAttendance(cls.lastRecordedAttendance) }}
+              </span>
             </p>
             <div class="d-flex flex-wrap gap-2">
               <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
@@ -129,7 +143,8 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { getFirestore, collection, query, where, getDocs, doc, deleteDoc } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { isSaturday } from 'date-fns';
 import AddEditClassModal from '~/components/admin/AddEditClassModal.vue';
 
 definePageMeta({
@@ -142,7 +157,7 @@ const db = nuxtApp.$db;
 // --- Reactive State ---
 const classes = ref([]);
 const teachers = ref([]); // To populate the teacher selection dropdowns in the modal
-const users = ref([]); // To get 'created by' user emails (admins)
+const users = ref([]);
 const loading = ref(true); // For initial page load
 const message = ref(null); // General success/error messages for the page
 const messageType = ref(null);
@@ -158,12 +173,37 @@ const deletingClass = ref(false);
 const deleteError = ref('');
 
 // --- Helper Functions ---
-const formatDate = (timestamp) => {
-  if (!timestamp) return 'N/A';
-  // Firestore timestamps are objects, convert to JS Date
-  const date = timestamp.toDate();
-  // Using toLocaleDateString and toLocaleTimeString for better readability
-  return `${date.toLocaleDateString()} ${date.toLocaleTimeString()}`;
+const formatLastRecordedAttendance = (timestamp) => {
+  if (!timestamp) return 'Never';
+  const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+  return date.toLocaleDateString();
+};
+
+/** Matches teacher UI: most recent Saturday (including today if today is Saturday). */
+const getLastSessionSaturday = () => {
+  const today = new Date();
+  let currentSaturday = new Date(today);
+  if (!isSaturday(currentSaturday)) {
+    const dayOfWeek = currentSaturday.getDay();
+    const daysSinceLastSaturday = (dayOfWeek + 1) % 7;
+    currentSaturday.setDate(currentSaturday.getDate() - daysSinceLastSaturday);
+  }
+  currentSaturday.setHours(0, 0, 0, 0);
+  return currentSaturday;
+};
+
+const startOfLocalDay = (d) => {
+  const x = new Date(d);
+  x.setHours(0, 0, 0, 0);
+  return x.getTime();
+};
+
+/** True if there is no attendance on record for the latest Saturday session yet. */
+const isMissingLastSession = (lastRecorded) => {
+  const lastSessionDay = startOfLocalDay(getLastSessionSaturday());
+  if (!lastRecorded) return true;
+  const recorded = lastRecorded.toDate ? lastRecorded.toDate() : new Date(lastRecorded);
+  return startOfLocalDay(recorded) < lastSessionDay;
 };
 
 const showPageMessage = (msg, type = 'success') => {
@@ -190,23 +230,31 @@ const fetchClassesAndUsers = async () => {
     // Fetch all classes
     const classesCollection = collection(db, 'classes');
     const querySnapshot = await getDocs(classesCollection);
-    const fetchedClasses = querySnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+    const fetchedClasses = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
-    // Create maps for quick lookup of names
-    const allUsersMap = users.value.reduce((map, user) => {
-      map[user.id] = user.name || user.email; // Use name if available, else email
-      return map;
-    }, {});
+    // Latest session date per class from attendance records (any student row shares same date per class/day)
+    const latestMsByClassId = {};
+    const attendanceSnapshot = await getDocs(collection(db, 'attendance'));
+    attendanceSnapshot.forEach((attDoc) => {
+      const data = attDoc.data();
+      const cid = data.classId;
+      if (!cid || !data.date) return;
+      const ms = data.date.toMillis();
+      if (latestMsByClassId[cid] == null || ms > latestMsByClassId[cid]) {
+        latestMsByClassId[cid] = ms;
+      }
+    });
+
     const teachersMap = teachers.value.reduce((map, teacher) => {
       map[teacher.id] = teacher.name || teacher.email;
       return map;
     }, {});
 
-    // Enhance classes with teacher names and created by user email for display
     classes.value = fetchedClasses.map(cls => ({
       ...cls,
       teacherNames: cls.teacherIds?.map(id => teachersMap[id]).filter(Boolean) || [],
-      createdByUserEmail: allUsersMap[cls.createdBy] || 'Unknown User', // Resolve createdBy UID to name/email
+      lastRecordedAttendance:
+        latestMsByClassId[cls.id] != null ? Timestamp.fromMillis(latestMsByClassId[cls.id]) : null,
     }));
 
   } catch (error) {
