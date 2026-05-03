@@ -41,15 +41,18 @@
                 <span v-else class="text-muted">No teachers assigned</span>
               </td>
               <td data-label="Last attendance">
-                <span class="text-nowrap">
-                  <i
-                    v-if="isMissingLastSession(cls.lastRecordedAttendance)"
-                    class="bi bi-exclamation-triangle-fill text-warning me-1"
-                    title="No attendance recorded for the latest Saturday session"
-                    aria-hidden="true"
-                  />
-                  {{ formatLastRecordedAttendance(cls.lastRecordedAttendance) }}
-                </span>
+                <div>
+                  <span class="text-nowrap">
+                    <i
+                      v-if="isMissingLastSession(cls.lastRecordedAttendance)"
+                      class="bi bi-exclamation-triangle-fill text-warning me-1"
+                      title="No attendance recorded for the latest Saturday session"
+                      aria-hidden="true"
+                    />
+                    {{ formatLastRecordedAttendance(cls.lastRecordedAttendance) }}
+                  </span>
+                  <small v-if="cls.lastRecordedByName" class="text-muted d-block mt-1">by {{ cls.lastRecordedByName }}</small>
+                </div>
               </td>
               <td data-label="Actions">
                 <div class="d-flex flex-wrap gap-2">
@@ -80,18 +83,23 @@
               </span>
               <span v-else class="text-muted">No teachers assigned</span>
             </p>
-            <p class="card-text mb-3">
-              <strong>Last recorded attendance:</strong>
-              <span class="text-nowrap">
-                <i
-                  v-if="isMissingLastSession(cls.lastRecordedAttendance)"
-                  class="bi bi-exclamation-triangle-fill text-warning me-1"
-                  title="No attendance recorded for the latest Saturday session"
-                  aria-hidden="true"
-                />
-                {{ formatLastRecordedAttendance(cls.lastRecordedAttendance) }}
-              </span>
-            </p>
+            <div class="mb-3">
+              <p class="card-text mb-1">
+                <strong>Last recorded attendance:</strong>
+              </p>
+              <p class="card-text mb-0">
+                <span class="text-nowrap">
+                  <i
+                    v-if="isMissingLastSession(cls.lastRecordedAttendance)"
+                    class="bi bi-exclamation-triangle-fill text-warning me-1"
+                    title="No attendance recorded for the latest Saturday session"
+                    aria-hidden="true"
+                  />
+                  {{ formatLastRecordedAttendance(cls.lastRecordedAttendance) }}
+                </span>
+              </p>
+              <small v-if="cls.lastRecordedByName" class="text-muted d-block mt-1">by {{ cls.lastRecordedByName }}</small>
+            </div>
             <div class="d-flex flex-wrap gap-2">
               <NuxtLink :to="`/admin/classes/${cls.id}/attendance`" class="btn btn-sm btn-success" title="Record Attendance">
                 <i class="bi bi-calendar-check-fill me-1"></i> Attendance
@@ -232,16 +240,25 @@ const fetchClassesAndUsers = async () => {
     const querySnapshot = await getDocs(classesCollection);
     const fetchedClasses = querySnapshot.docs.map(docSnap => ({ id: docSnap.id, ...docSnap.data() }));
 
-    // Latest session date per class from attendance records (any student row shares same date per class/day)
-    const latestMsByClassId = {};
+    const userDisplayMap = users.value.reduce((map, user) => {
+      map[user.id] = user.name || user.email;
+      return map;
+    }, {});
+
+    // Latest session date per class, plus who recorded (from any row for that day)
+    const latestByClassId = {};
     const attendanceSnapshot = await getDocs(collection(db, 'attendance'));
     attendanceSnapshot.forEach((attDoc) => {
       const data = attDoc.data();
       const cid = data.classId;
       if (!cid || !data.date) return;
       const ms = data.date.toMillis();
-      if (latestMsByClassId[cid] == null || ms > latestMsByClassId[cid]) {
-        latestMsByClassId[cid] = ms;
+      const recordedBy = data.recordedBy || null;
+      const prev = latestByClassId[cid];
+      if (prev == null || ms > prev.ms) {
+        latestByClassId[cid] = { ms, recordedBy };
+      } else if (prev && ms === prev.ms && recordedBy && !prev.recordedBy) {
+        prev.recordedBy = recordedBy;
       }
     });
 
@@ -250,12 +267,20 @@ const fetchClassesAndUsers = async () => {
       return map;
     }, {});
 
-    classes.value = fetchedClasses.map(cls => ({
-      ...cls,
-      teacherNames: cls.teacherIds?.map(id => teachersMap[id]).filter(Boolean) || [],
-      lastRecordedAttendance:
-        latestMsByClassId[cls.id] != null ? Timestamp.fromMillis(latestMsByClassId[cls.id]) : null,
-    }));
+    classes.value = fetchedClasses.map((cls) => {
+      const latest = latestByClassId[cls.id];
+      let lastRecordedByName = null;
+      if (latest != null && latest.recordedBy) {
+        lastRecordedByName = userDisplayMap[latest.recordedBy] || 'Unknown user';
+      }
+      return {
+        ...cls,
+        teacherNames: cls.teacherIds?.map(id => teachersMap[id]).filter(Boolean) || [],
+        lastRecordedAttendance:
+          latest != null ? Timestamp.fromMillis(latest.ms) : null,
+        lastRecordedByName,
+      };
+    });
 
   } catch (error) {
     console.error('Error fetching classes, teachers, or users:', error);
