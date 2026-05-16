@@ -265,7 +265,13 @@ const fetchAttendance = async () => {
   });
 
   try {
-    const skip = await fetchSkipForClassDay(db, classId.value, dayMidnight);
+    let skip = null;
+    try {
+      skip = await fetchSkipForClassDay(db, classId.value, dayMidnight);
+    } catch (skipError) {
+      console.warn('Could not read skip record for this date:', skipError);
+    }
+
     if (skip) {
       sessionNoClass.value = true;
       skipReasonChoice.value = skip.skipReason === 'no_class' ? 'no_class' : 'holiday';
@@ -292,13 +298,26 @@ const fetchAttendance = async () => {
     if (querySnapshot.empty) {
       attendanceRecorded.value = false;
     } else {
+      let foundAny = false;
       querySnapshot.forEach(docSnap => {
         const data = docSnap.data();
-        if (students.value.some(s => s.id === data.studentId)) {
+        // Per-student records (current format)
+        if (data.studentId && students.value.some(s => s.id === data.studentId)) {
           attendanceStatus[data.studentId] = data.present;
+          foundAny = true;
+        }
+        // Legacy single-doc format: { students: { [id]: { present } } }
+        if (data.students && typeof data.students === 'object') {
+          students.value.forEach(student => {
+            const entry = data.students[student.id];
+            if (entry && typeof entry.present === 'boolean') {
+              attendanceStatus[student.id] = entry.present;
+              foundAny = true;
+            }
+          });
         }
       });
-      attendanceRecorded.value = true;
+      attendanceRecorded.value = foundAny;
     }
 
     updateAttendanceCounts();

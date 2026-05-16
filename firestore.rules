@@ -21,13 +21,36 @@ service cloud.firestore {
       return isAuthenticated() && get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'teacher';
     }
 
-    // IMPORTANT HELPER: Checks if the current authenticated user (teacher OR admin) is assigned to a specific class
-    // This function checks if the user's UID is present in the `teacherIds` array of the CLASS document.
+    // The classId stored on the teacher's user profile (used by the teacher UI queries).
+    function teacherAssignedClassId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.classId;
+    }
+
+    // Teacher assigned via users.classId (checked before teacherIds to avoid rule errors on older class docs).
+    function isTeacherForOwnClass(classId) {
+      return isTeacher() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        teacherAssignedClassId() == classId;
+    }
+
+    // UID is in classes.teacherIds (safe when teacherIds is missing on older class documents).
     function isAssignedToClass(classId) {
-      // Ensure the class document exists before trying to read its data
+      let classData = get(/databases/$(database)/documents/classes/$(classId)).data;
       return isAuthenticated() &&
-             exists(/databases/$(database)/documents/classes/$(classId)) &&
-             get(/databases/$(database)/documents/classes/$(classId)).data.teacherIds.hasAny([request.auth.uid]);
+        exists(/databases/$(database)/documents/classes/$(classId)) &&
+        'teacherIds' in classData &&
+        classData.teacherIds is list &&
+        classData.teacherIds.hasAny([request.auth.uid]);
+    }
+
+    // Skip doc ids are "{classId}_{YYYY-MM-DD}".
+    function skipIdMatchesTeacherClass(skipId) {
+      let classId = teacherAssignedClassId();
+      return isTeacher() && classId is string && skipId.matches(classId + '_.*');
+    }
+
+    function canAccessClass(classId) {
+      return isAdmin() || isTeacherForOwnClass(classId) || isAssignedToClass(classId);
     }
 
 
@@ -65,12 +88,12 @@ service cloud.firestore {
       // Allow read for admin, OR if the current user is assigned to the student's class,
       // OR if the student is reading their own profile.
       allow read: if isAdmin() ||
-                     (isAuthenticated() && resource.data.classId is string && isAssignedToClass(resource.data.classId)) ||
+                     (isAuthenticated() && resource.data.classId is string && canAccessClass(resource.data.classId)) ||
                      (isAuthenticated() && request.auth.uid == studentId); // Student can read their own profile
       
       // Allow create/update/delete for admins, or teachers for students in their assigned classes
       allow write: if isAdmin() ||
-                      (isAuthenticated() && request.resource.data.classId is string && isAssignedToClass(request.resource.data.classId));
+                      (isAuthenticated() && request.resource.data.classId is string && canAccessClass(request.resource.data.classId));
     }
 
     // 4. ATTENDANCE Collection
@@ -78,26 +101,37 @@ service cloud.firestore {
     // - Teachers (or admins acting as teachers) can read, create, update attendance records
     //   for classes they are assigned to.
     match /attendance/{attendanceId} {
-      // Allow read for admins, OR if the current user is assigned to the class of this attendance record.
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.classId is string && isAssignedToClass(resource.data.classId));
+      // Split read rules so list queries (classId + date range) are provable for teachers.
+      allow read: if isAdmin();
+      allow read: if resource.data.classId is string && isTeacherForOwnClass(resource.data.classId);
+      allow read: if resource.data.classId is string && isAssignedToClass(resource.data.classId);
 
-      // Allow create/update for admins, OR if the current user is assigned to the class,
-      // AND ensure the 'recordedBy' field matches the user performing the action.
-      allow write: if isAdmin() ||
-                      (isAuthenticated() &&
-                       request.resource.data.classId is string &&
-                       isAssignedToClass(request.resource.data.classId) &&
-                       request.auth.uid == request.resource.data.recordedBy);
+      allow create, update: if isAdmin() ||
+        (isAuthenticated() &&
+         request.resource.data.classId is string &&
+         canAccessClass(request.resource.data.classId) &&
+         request.auth.uid == request.resource.data.recordedBy);
+
+      allow delete: if isAdmin() ||
+        (isAuthenticated() && resource.data.classId is string && canAccessClass(resource.data.classId));
     }
 
     // Marks a class date as "no session" (holiday / no class). Teachers assigned to the class or admins may write.
     match /class_attendance_skips/{skipId} {
-      allow read: if isAdmin() || (isAuthenticated() && resource.data.classId is string && isAssignedToClass(resource.data.classId));
-      allow write: if isAdmin() ||
-                      (isAuthenticated() &&
-                       request.resource.data.classId is string &&
-                       isAssignedToClass(request.resource.data.classId) &&
-                       request.auth.uid == request.resource.data.recordedBy);
+      allow get: if isAdmin() || skipIdMatchesTeacherClass(skipId);
+
+      allow list: if isAdmin();
+      allow list: if resource.data.classId is string && isTeacherForOwnClass(resource.data.classId);
+      allow list: if resource.data.classId is string && isAssignedToClass(resource.data.classId);
+
+      allow create, update: if isAdmin() ||
+        (isAuthenticated() &&
+         request.resource.data.classId is string &&
+         canAccessClass(request.resource.data.classId) &&
+         request.auth.uid == request.resource.data.recordedBy);
+
+      allow delete: if isAdmin() ||
+        (isAuthenticated() && resource.data.classId is string && canAccessClass(resource.data.classId));
     }
   }
 }
