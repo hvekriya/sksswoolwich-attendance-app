@@ -74,7 +74,7 @@ service cloud.firestore {
     // - Teachers (or admins assigned as teachers) can update classes they are assigned to.
     match /classes/{classId} {
       // Admins can do anything, or any authenticated user assigned to THIS class can read
-      allow read: if isAdmin() || isAssignedToClass(classId);
+      allow read: if isAdmin() || isAssignedToClass(classId) || isTeacherForOwnClass(classId);
       allow create: if isAdmin(); // Only admins can create new classes
       allow update: if isAdmin() || isAssignedToClass(classId); // Admins can update any, assigned users can update their own assigned classes
       allow delete: if isAdmin(); // Only admins can delete classes
@@ -106,14 +106,17 @@ service cloud.firestore {
       allow read: if resource.data.classId is string && isTeacherForOwnClass(resource.data.classId);
       allow read: if resource.data.classId is string && isAssignedToClass(resource.data.classId);
 
-      allow create, update: if isAdmin() ||
-        (isAuthenticated() &&
-         request.resource.data.classId is string &&
-         canAccessClass(request.resource.data.classId) &&
-         request.auth.uid == request.resource.data.recordedBy);
+      allow create, update: if isAdmin();
+      allow create, update: if request.resource.data.classId is string &&
+        isTeacherForOwnClass(request.resource.data.classId) &&
+        request.auth.uid == request.resource.data.recordedBy;
+      allow create, update: if request.resource.data.classId is string &&
+        isAssignedToClass(request.resource.data.classId) &&
+        request.auth.uid == request.resource.data.recordedBy;
 
-      allow delete: if isAdmin() ||
-        (isAuthenticated() && resource.data.classId is string && canAccessClass(resource.data.classId));
+      allow delete: if isAdmin();
+      allow delete: if resource.data.classId is string && isTeacherForOwnClass(resource.data.classId);
+      allow delete: if resource.data.classId is string && isAssignedToClass(resource.data.classId);
     }
 
     // Marks a class date as "no session" (holiday / no class). Teachers assigned to the class or admins may write.
@@ -124,14 +127,17 @@ service cloud.firestore {
       allow list: if resource.data.classId is string && isTeacherForOwnClass(resource.data.classId);
       allow list: if resource.data.classId is string && isAssignedToClass(resource.data.classId);
 
-      allow create, update: if isAdmin() ||
-        (isAuthenticated() &&
-         request.resource.data.classId is string &&
-         canAccessClass(request.resource.data.classId) &&
-         request.auth.uid == request.resource.data.recordedBy);
+      allow create, update: if isAdmin();
+      allow create, update: if request.resource.data.classId is string &&
+        isTeacherForOwnClass(request.resource.data.classId) &&
+        request.auth.uid == request.resource.data.recordedBy;
+      allow create, update: if request.resource.data.classId is string &&
+        isAssignedToClass(request.resource.data.classId) &&
+        request.auth.uid == request.resource.data.recordedBy;
 
-      allow delete: if isAdmin() ||
-        (isAuthenticated() && resource.data.classId is string && canAccessClass(resource.data.classId));
+      allow delete: if isAdmin() || skipIdMatchesTeacherClass(skipId);
+      allow delete: if resource.data.classId is string && isTeacherForOwnClass(resource.data.classId);
+      allow delete: if resource.data.classId is string && isAssignedToClass(resource.data.classId);
     }
   }
 }

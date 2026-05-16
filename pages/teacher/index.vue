@@ -385,7 +385,7 @@ const saveAttendance = async () => {
     attendanceRecorded.value = true;
   } catch (error) {
     console.error('Error saving attendance:', error);
-    saveMessage.value = 'Failed to save attendance. Please try again.';
+    saveMessage.value = `Failed to save attendance: ${error.message || 'Please try again.'}`;
     saveMessageType.value = 'danger';
   } finally {
     loading.value = false;

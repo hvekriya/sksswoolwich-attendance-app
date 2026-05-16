@@ -46,8 +46,10 @@ export default defineNuxtConfig({
     },
     // Workbox configuration for service worker (similar to before)
     workbox: {
-      navigateFallback: '/', // Fallback for SPA routing
-      globPatterns: ['**/*.{js,css,html,png,svg,ico}'], // Files to cache
+      // Only used in production builds; must match a precached URL (see navigateFallbackDenylist).
+      navigateFallback: '/',
+      navigateFallbackDenylist: [/^\/__nuxt/, /^\/_nuxt/, /^\/api\//],
+      globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
       // More aggressive caching for offline
       runtimeCaching: [
         {
@@ -130,10 +132,9 @@ export default defineNuxtConfig({
       // use npm run generate && npm run start to test
     },
     devOptions: {
-      enabled: true, // Enable PWA in development mode for testing
+      // Avoid workbox "non-precached-url" errors during `npm run dev` (no production precache manifest).
+      enabled: false,
       suppressWarnings: true,
-      // type: 'module',
-      // navigateFallback: '/',
     }
   },
 

@@ -80,5 +80,8 @@ export async function deleteSkipForClassDay(
   dateKey: string
 ): Promise<void> {
   const ref = doc(db, CLASS_ATTENDANCE_SKIPS, skipDocId(classId, dateKey));
-  await deleteDoc(ref);
+  const snap = await getDoc(ref);
+  if (snap.exists()) {
+    await deleteDoc(ref);
+  }
 }
