@@ -151,7 +151,7 @@
 
 <script setup>
 import { ref, onMounted } from 'vue';
-import { collection, getDocs, doc, deleteDoc, Timestamp } from 'firebase/firestore';
+import { collection, getDocs, doc, deleteDoc, Timestamp, query, where } from 'firebase/firestore';
 import { isSaturday } from 'date-fns';
 import AddEditClassModal from '~/components/admin/AddEditClassModal.vue';
 
@@ -245,9 +245,18 @@ const fetchClassesAndUsers = async () => {
       return map;
     }, {});
 
-    // Latest session date per class, plus who recorded (from any row for that day)
+    // Latest session date per class (bounded lookback — avoids full collection scan)
+    const lookbackStart = new Date();
+    lookbackStart.setMonth(lookbackStart.getMonth() - 6);
+    lookbackStart.setHours(0, 0, 0, 0);
+
     const latestByClassId = {};
-    const attendanceSnapshot = await getDocs(collection(db, 'attendance'));
+    const attendanceSnapshot = await getDocs(
+      query(
+        collection(db, 'attendance'),
+        where('date', '>=', Timestamp.fromDate(lookbackStart))
+      )
+    );
     attendanceSnapshot.forEach((attDoc) => {
       const data = attDoc.data();
       const cid = data.classId;

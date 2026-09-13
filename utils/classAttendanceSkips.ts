@@ -17,7 +17,10 @@ export const CLASS_ATTENDANCE_SKIPS = 'class_attendance_skips';
 export function dateKeyFromDate(d: Date): string {
   const copy = new Date(d);
   copy.setHours(0, 0, 0, 0);
-  return copy.toISOString().split('T')[0];
+  const y = copy.getFullYear();
+  const m = String(copy.getMonth() + 1).padStart(2, '0');
+  const day = String(copy.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
 }
 
 export function skipDocId(classId: string, dateKey: string): string {

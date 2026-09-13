@@ -123,7 +123,7 @@
 import { ref, onMounted, computed, watch, nextTick } from 'vue';
 import { useRoute } from 'vue-router';
 import { onAuthStateChanged } from 'firebase/auth';
-import { doc, getDoc, collection, query, where, getDocs, setDoc, Timestamp } from 'firebase/firestore';
+import { doc, getDoc, collection, query, where, getDocs, Timestamp, writeBatch } from 'firebase/firestore';
 import { format, subWeeks, isSaturday } from 'date-fns';
 import {
   fetchSkipForClassDay,
@@ -371,20 +371,22 @@ const saveAttendance = async () => {
 
     await deleteSkipForClassDay(db, currentClassId.value, dateKey);
 
+    const batch = writeBatch(db);
+    const datePart = dateKeyFromDate(dateAtMidnight);
+    const recordedAt = Timestamp.now();
     for (const student of students.value) {
-      const isPresent = attendanceStatus[student.id];
-      const attendanceDocId = `${currentClassId.value}_${dateAtMidnight.toISOString().split('T')[0]}_${student.id}`;
+      const attendanceDocId = `${currentClassId.value}_${datePart}_${student.id}`;
       const attendanceRef = doc(db, 'attendance', attendanceDocId);
-
-      await setDoc(attendanceRef, {
+      batch.set(attendanceRef, {
         classId: currentClassId.value,
         studentId: student.id,
         date: normalizedDate,
-        present: isPresent,
+        present: !!attendanceStatus[student.id],
         recordedBy: currentUserId.value,
-        recordedAt: Timestamp.now(),
+        recordedAt,
       }, { merge: true });
     }
+    await batch.commit();
     saveMessage.value = 'Attendance saved successfully!';
     saveMessageType.value = 'success';
   } catch (error) {

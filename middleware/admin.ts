@@ -1,27 +1,16 @@
-// middleware/admin.ts
-import { getAuth } from 'firebase/auth';
-import { getFirestore, doc, getDoc } from 'firebase/firestore';
+import { useUserProfile } from '~/composables/useUserProfile';
 
-export default defineNuxtRouteMiddleware(async (to, from) => {
-  if (process.client) {
-    const auth = getAuth();
-    const user = auth.currentUser;
-    const db = getFirestore();
+export default defineNuxtRouteMiddleware(async () => {
+  if (!import.meta.client) return;
 
-    if (!user) {
-      return navigateTo('/login'); // Not logged in
-    }
+  const { fetchProfile } = useUserProfile();
+  const userProfile = await fetchProfile();
 
-    try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+  if (!userProfile) {
+    return navigateTo('/login');
+  }
 
-      if (!userDoc.exists() || userDoc.data()?.role !== 'admin') {
-        return navigateTo('/'); // Not an admin, redirect to home
-      }
-    } catch (error) {
-      console.error('Error fetching user role for admin middleware:', error);
-      return navigateTo('/'); // Redirect on error
-    }
+  if (userProfile.role !== 'admin') {
+    return navigateTo('/');
   }
 });

@@ -2,6 +2,9 @@
 import { defineNuxtConfig } from 'nuxt/config';
 
 export default defineNuxtConfig({
+  // Client-only SPA (Firebase Auth/Firestore); hosted on Netlify as a static PWA.
+  ssr: false,
+
   devtools: { enabled: true }, // Enable Nuxt DevTools
 
   // Global CSS: https://nuxt.com/docs/api/configuration/nuxt-config#css
@@ -17,17 +20,19 @@ export default defineNuxtConfig({
   ],
 
   pwa: {
-    // Manifest configuration (similar to before, but moved inside `pwa`)
+    registerType: 'autoUpdate',
+    includeAssets: ['calendar-app-icon-main.png', 'calendar-app-icon-white.png'],
     manifest: {
       name: 'SKSS Attendance',
       short_name: 'SKSS Attend',
       description: 'Attendance management for SKSS Woolwich classes',
-      theme_color: '#8b184c', // Example color
+      theme_color: '#8b184c',
       background_color: '#ffffff',
       display: 'standalone',
+      start_url: '/',
       icons: [
         {
-          src: 'calendar-app-icon-main.png', // Relative to your `public` directory
+          src: 'calendar-app-icon-main.png',
           sizes: '192x192',
           type: 'image/png',
         },
@@ -36,11 +41,11 @@ export default defineNuxtConfig({
           sizes: '512x512',
           type: 'image/png',
         },
-         {
+        {
           src: 'calendar-app-icon-main.png',
           sizes: '512x512',
           type: 'image/png',
-          purpose: 'any maskable', // For adaptive icons on Android
+          purpose: 'any maskable',
         },
       ],
     },
@@ -50,7 +55,7 @@ export default defineNuxtConfig({
       navigateFallback: '/',
       navigateFallbackDenylist: [/^\/__nuxt/, /^\/_nuxt/, /^\/api\//],
       globPatterns: ['**/*.{js,css,html,png,svg,ico,woff2}'],
-      // More aggressive caching for offline
+      // Cache static assets only — never Firestore API responses (stale attendance risk).
       runtimeCaching: [
         {
           urlPattern: /^https:\/\/fonts\.googleapis\.com\/.*/i,
@@ -59,7 +64,7 @@ export default defineNuxtConfig({
             cacheName: 'google-fonts-cache',
             expiration: {
               maxEntries: 10,
-              maxAgeSeconds: 60 * 60 * 24 * 365, // <gather-from-server-response>
+              maxAgeSeconds: 60 * 60 * 24 * 365,
             },
             cacheableResponse: {
               statuses: [0, 200],
@@ -80,46 +85,17 @@ export default defineNuxtConfig({
             },
           },
         },
-        // IMPORTANT: Add caching for Firebase static assets if you serve them
-        // If your Firebase SDKs are loaded from CDN, you might need to cache them.
-        // Example for Firebase JS SDK (adjust URL pattern based on your Firebase setup)
         {
-          urlPattern: ({ url }) => url.origin === 'https://www.gstatic.com' || url.origin === 'https://www.googleapis.com',
+          urlPattern: ({ url }) => url.origin === 'https://www.gstatic.com',
           handler: 'StaleWhileRevalidate',
           options: {
-            cacheName: 'firebase-sdk-cache',
+            cacheName: 'gstatic-cache',
             expiration: {
               maxEntries: 20,
-              maxAgeSeconds: 60 * 60 * 24 * 7, // 7 days
+              maxAgeSeconds: 60 * 60 * 24 * 7,
             },
           },
         },
-        {
-          urlPattern: ({ url }) => url.origin === 'https://firestore.googleapis.com',
-          handler: 'NetworkFirst', // Or CacheFirst depending on how critical freshness is
-          options: {
-            cacheName: 'firestore-data',
-            expiration: {
-              maxEntries: 50,
-              maxAgeSeconds: 60 * 60 * 24, // Cache for 24 hours
-            },
-            cacheableResponse: {
-              statuses: [0, 200],
-            },
-          },
-        },
-        // Cache API calls to your own backend if any
-        // {
-        //   urlPattern: ({ url }) => url.pathname.startsWith('/api/'),
-        //   handler: 'NetworkFirst', // Or appropriate strategy
-        //   options: {
-        //     cacheName: 'api-cache',
-        //     expiration: {
-        //       maxEntries: 100,
-        //       maxAgeSeconds: 60 * 60 * 24, // 24 hours
-        //     },
-        //   },
-        // },
       ],
     },
     // client options

@@ -1,0 +1,36 @@
+# Netlify — static SPA (Nuxt generate) + PWA
+# Firebase is used only for Auth / Firestore / Functions.
+
+[build]
+  command = "npm run generate"
+  publish = ".output/public"
+
+[build.environment]
+  NODE_VERSION = "22"
+
+# SPA client-side routes
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
+
+# Keep service worker + manifest fresh for PWA updates
+[[headers]]
+  for = "/sw.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/workbox-*.js"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/manifest.webmanifest"
+  [headers.values]
+    Cache-Control = "no-cache"
+
+[[headers]]
+  for = "/_nuxt/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"

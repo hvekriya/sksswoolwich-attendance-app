@@ -149,15 +149,20 @@ const checkForMissingAttendance = async () => {
 
     const classesWithoutAttendance = [];
 
-    for (const cls of allClasses) {
-      const attendanceQuery = query(
-        collection(db, 'attendance'),
-        where('classId', '==', cls.id),
-        where('date', '>=', fourteenDaysAgoTimestamp)
-      );
-      const attendanceSnapshot = await getDocs(attendanceQuery);
+    // One range query for recent attendance instead of N queries (one per class).
+    const recentAttendanceQuery = query(
+      collection(db, 'attendance'),
+      where('date', '>=', fourteenDaysAgoTimestamp)
+    );
+    const recentAttendanceSnapshot = await getDocs(recentAttendanceQuery);
+    const classesWithRecentAttendance = new Set();
+    recentAttendanceSnapshot.forEach((attDoc) => {
+      const cid = attDoc.data().classId;
+      if (cid) classesWithRecentAttendance.add(cid);
+    });
 
-      if (attendanceSnapshot.empty) {
+    for (const cls of allClasses) {
+      if (!classesWithRecentAttendance.has(cls.id)) {
         const teacherNames = cls.teacherIds?.map(id => teacherMap[id]).filter(Boolean) || [];
         classesWithoutAttendance.push({
           ...cls,

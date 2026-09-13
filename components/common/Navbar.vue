@@ -22,10 +22,10 @@
             <NuxtLink class="nav-link" to="/">Home</NuxtLink>
           </li>
 
-          <li class="nav-item" v-if="userRole === 'teacher'">
+          <li class="nav-item" v-if="userRole === 'teacher' || userRole === 'admin'">
             <NuxtLink class="nav-link" to="/teacher">My Class</NuxtLink>
           </li>
-          <li class="nav-item" v-if="userRole === 'teacher'">
+          <li class="nav-item" v-if="userRole === 'teacher' || userRole === 'admin'">
             <NuxtLink class="nav-link" to="/teacher/add-student">Add Student</NuxtLink>
           </li>
           <li class="nav-item" v-if="userRole === 'admin'">
@@ -67,40 +67,26 @@
 
 <script setup>
 import { ref, onMounted, computed } from 'vue';
-import { getAuth, onAuthStateChanged, signOut } from 'firebase/auth';
-import { doc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { useUserProfile } from '~/composables/useUserProfile';
 
 const nuxtApp = useNuxtApp();
 const auth = nuxtApp.$auth;
-const db = nuxtApp.$db;
 const router = useRouter();
+const { profile, fetchProfile, clearProfile } = useUserProfile();
 
 const currentUser = ref(null);
-const userRole = ref(null);
-const currentUserName = ref('Loading...');
+
+const userRole = computed(() => profile.value?.role || null);
+const currentUserName = computed(() => profile.value?.name || profile.value?.email || currentUser.value?.email || null);
 
 onMounted(() => {
   onAuthStateChanged(auth, async (firebaseUser) => {
     currentUser.value = firebaseUser;
-    userRole.value = null; // Reset role
-    currentUserName.value = firebaseUser?.email || null; // Default to email
-
     if (firebaseUser) {
-      try {
-        const userDocRef = doc(db, 'users', firebaseUser.uid);
-        const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const userData = userDoc.data();
-          userRole.value = userData.role;
-          currentUserName.value = userData.name || userData.email;
-        } else {
-          console.warn('User document not found for UID:', firebaseUser.uid);
-          userRole.value = 'unregistered'; // Or a default role for users without a Firestore doc
-        }
-      } catch (error) {
-        console.error('Error fetching user data for Navbar:', error);
-        userRole.value = 'error';
-      }
+      await fetchProfile(true);
+    } else {
+      clearProfile();
     }
   });
 });
@@ -109,9 +95,8 @@ const handleLogout = async () => {
   try {
     await signOut(auth);
     currentUser.value = null;
-    userRole.value = null;
-    currentUserName.value = null;
-    router.push('/login'); // Redirect to login page after logout
+    clearProfile();
+    router.push('/login');
   } catch (error) {
     console.error('Error logging out:', error);
     alert('Failed to log out. Please try again.');
@@ -120,7 +105,6 @@ const handleLogout = async () => {
 </script>
 
 <style scoped>
-/* Scoped styles for the Navbar component */
 .navbar-brand {
   font-weight: bold;
 }
@@ -131,5 +115,4 @@ const handleLogout = async () => {
   overflow: hidden;
   text-overflow: ellipsis;
 }
-
 </style>
